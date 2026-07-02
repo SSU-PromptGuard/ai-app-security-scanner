@@ -1,338 +1,263 @@
-"""Source/sink dictionaries, dangerous-pattern catalogs, and finding templates.
-
-This module is pure data. The analysis logic lives in ``analyzer.py``.
-All patterns here are heuristics for a *prototype* and are intentionally simple.
-"""
+"""Rule metadata and pattern constants for the Layer A analyzer."""
 
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# OWASP categories (OWASP Top 10 for LLM Applications 2025)
-# ---------------------------------------------------------------------------
-OWASP = {
-    "LLM01": "LLM01:2025 Prompt Injection",
-    "LLM02": "LLM02:2025 Sensitive Information Disclosure",
-    "LLM03": "LLM03:2025 Supply Chain",
-    "LLM05": "LLM05:2025 Improper Output Handling",
-    "LLM06": "LLM06:2025 Excessive Agency",
-    "LLM07": "LLM07:2025 System Prompt Leakage",
-}
+from dataclasses import asdict, dataclass
 
-# ---------------------------------------------------------------------------
-# Source dictionaries
-# ---------------------------------------------------------------------------
 
-SECRET_NAME_PATTERNS = [
-    "api_key", "apikey", "token", "access_token", "refresh_token",
-    "secret", "password", "passwd", "credential", "private_key",
-    "db_url", "database_url", "openai_api_key", "anthropic_api_key",
-    "authorization", "bearer",
-]
+@dataclass(frozen=True)
+class RuleMetadata:
+    rule_id: str
+    category: str
+    detection_type: str
+    source_kind: str
+    sink_kind: str
+    status: str
+    severity: str
 
-SECRET_LITERAL_PATTERNS = [
-    "sk-", "ghp_", "xoxb-", "Bearer ",
-    "-----BEGIN PRIVATE KEY-----",
-    "postgresql://", "mysql://", "mongodb://",
-]
 
-LLM_OUTPUT_ATTRS = {"content"}
-LLM_OUTPUT_CALL_SUFFIXES = {"invoke", "predict", "ask_llm", "call_llm", "generate_response"}
-LLM_OUTPUT_CALL_NAMES = {"ask_llm", "call_llm", "generate_response"}
-
-EXTERNAL_CONTENT_ATTRS = {"text", "page_content", "body"}
-EXTERNAL_CONTENT_CALL_SUFFIXES = {"read", "get_relevant_documents", "similarity_search"}
-
-EXTERNAL_NAME_HINTS = ["page_text", "file_content", "document_text", "email_body"]
-
-# ---------------------------------------------------------------------------
-# Sink dictionaries
-# ---------------------------------------------------------------------------
-CODE_EXEC_NAMES = {"eval", "exec", "compile"}
-
-COMMAND_EXEC_SUFFIXES = {"system", "run", "check_output", "Popen", "call", "check_call"}
-COMMAND_EXEC_MODULES = {"subprocess", "os"}
-
-SQL_EXEC_SUFFIXES = {"execute", "executemany"}
-
-LLM_INPUT_ENDSWITH = (
-    "chat.completions.create",
-    "responses.create",
-    "messages.create",
+REQUIRED_RULES: tuple[RuleMetadata, ...] = (
+    RuleMetadata(
+        rule_id="LLM01_EXTERNAL_CONTENT_TO_LLM_PROMPT",
+        category="LLM01:2025 Prompt Injection",
+        detection_type="ast_taint",
+        source_kind="external_content",
+        sink_kind="llm_input",
+        status="risky",
+        severity="medium",
+    ),
+    RuleMetadata(
+        rule_id="LLM02_SECRET_TO_LLM_INPUT",
+        category="LLM02:2025 Sensitive Information Disclosure",
+        detection_type="ast_taint",
+        source_kind="secret",
+        sink_kind="llm_input",
+        status="vulnerable",
+        severity="high",
+    ),
+    RuleMetadata(
+        rule_id="LLM03_UNSAFE_DESERIALIZATION",
+        category="LLM03:2025 Supply Chain",
+        detection_type="ast_search",
+        source_kind="serialized_artifact",
+        sink_kind="unsafe_deserialization",
+        status="risky",
+        severity="high",
+    ),
+    RuleMetadata(
+        rule_id="LLM03_TRUST_REMOTE_CODE_TRUE",
+        category="LLM03:2025 Supply Chain",
+        detection_type="ast_search",
+        source_kind="remote_model",
+        sink_kind="remote_code_trust",
+        status="risky",
+        severity="high",
+    ),
+    RuleMetadata(
+        rule_id="LLM05_LLM_OUTPUT_TO_CODE_EXECUTION",
+        category="LLM05:2025 Improper Output Handling",
+        detection_type="ast_taint",
+        source_kind="llm_output",
+        sink_kind="code_execution",
+        status="vulnerable",
+        severity="critical",
+    ),
+    RuleMetadata(
+        rule_id="LLM05_LLM_OUTPUT_TO_SHELL",
+        category="LLM05:2025 Improper Output Handling",
+        detection_type="ast_taint",
+        source_kind="llm_output",
+        sink_kind="shell_execution",
+        status="vulnerable",
+        severity="critical",
+    ),
+    RuleMetadata(
+        rule_id="LLM05_LLM_OUTPUT_TO_SQL",
+        category="LLM05:2025 Improper Output Handling",
+        detection_type="ast_taint",
+        source_kind="llm_output",
+        sink_kind="sql_execution",
+        status="vulnerable",
+        severity="critical",
+    ),
+    RuleMetadata(
+        rule_id="LLM06_AGENT_TOOL_DESTRUCTIVE_OR_EXECUTION",
+        category="LLM06:2025 Excessive Agency",
+        detection_type="ast_capability",
+        source_kind="tool_capability",
+        sink_kind="destructive_or_execution",
+        status="risky",
+        severity="critical",
+    ),
+    RuleMetadata(
+        rule_id="LLM06_AGENT_TOOL_EXTERNAL_SIDE_EFFECT",
+        category="LLM06:2025 Excessive Agency",
+        detection_type="ast_capability",
+        source_kind="tool_capability",
+        sink_kind="external_side_effect",
+        status="risky",
+        severity="high",
+    ),
+    RuleMetadata(
+        rule_id="LLM07_SECRET_IN_SYSTEM_PROMPT",
+        category="LLM07:2025 System Prompt Leakage",
+        detection_type="ast_taint",
+        source_kind="secret",
+        sink_kind="system_prompt",
+        status="vulnerable",
+        severity="high",
+    ),
 )
-LLM_INPUT_SUFFIXES = {"invoke", "run", "predict"}
-LLM_INPUT_NAMES = {"PromptTemplate", "ChatPromptTemplate"}
 
-EXPOSURE_SUFFIXES = {"print", "info", "debug", "warning", "error", "send_email", "post"}
+RULES_BY_ID = {rule.rule_id: rule for rule in REQUIRED_RULES}
+RULES = RULES_BY_ID
 
-DESERIALIZE_CALLS = {"pickle.load", "pickle.loads", "torch.load", "joblib.load"}
-
-# ---------------------------------------------------------------------------
-# Agent / tool (LLM06)
-# ---------------------------------------------------------------------------
-DANGEROUS_TOOL_NAMES = {
-    "shell", "command", "terminal", "delete_file", "write_file",
-    "send_email", "db_write", "execute_sql", "run_command", "exec",
+DEFAULT_CONFIDENCE = {
+    "LLM01_EXTERNAL_CONTENT_TO_LLM_PROMPT": 0.75,
+    "LLM02_SECRET_TO_LLM_INPUT": 0.75,
+    "LLM03_UNSAFE_DESERIALIZATION": 0.90,
+    "LLM03_TRUST_REMOTE_CODE_TRUE": 0.90,
+    "LLM05_LLM_OUTPUT_TO_CODE_EXECUTION": 0.90,
+    "LLM05_LLM_OUTPUT_TO_SHELL": 0.90,
+    "LLM05_LLM_OUTPUT_TO_SQL": 0.90,
+    "LLM06_AGENT_TOOL_DESTRUCTIVE_OR_EXECUTION": 0.90,
+    "LLM06_AGENT_TOOL_EXTERNAL_SIDE_EFFECT": 0.75,
+    "LLM07_SECRET_IN_SYSTEM_PROMPT": 0.75,
 }
 
-CAPABILITY_DESCRIPTIONS = {
-    "shell": "shell command execution",
-    "file_delete": "file deletion",
-    "file_write": "file write",
-    "code_exec": "dynamic code execution",
-    "network_post": "external network POST",
-    "email": "email sending",
-    "sql": "database write/query",
+
+def get_rule(rule_id: str) -> RuleMetadata:
+    return RULES_BY_ID[rule_id]
+
+
+# Source families.
+SECRET_NAME_PARTS = (
+    "api_key",
+    "apikey",
+    "token",
+    "secret",
+    "password",
+    "passwd",
+    "credential",
+    "credentials",
+    "database_url",
+    "db_url",
+    "private_key",
+)
+
+SECRET_ENV_KEY_PARTS = (
+    "KEY",
+    "TOKEN",
+    "PASSWORD",
+    "PASSWD",
+    "SECRET",
+    "DATABASE_URL",
+    "DB_URL",
+    "CREDENTIAL",
+    "PRIVATE_KEY",
+)
+
+SECRET_LITERAL_HINTS = (
+    "sk-",
+    "ghp_",
+    "xoxb-",
+    "postgres://",
+    "postgresql://",
+    "mysql://",
+    "-----BEGIN PRIVATE KEY-----",
+)
+
+MASKING_HINTS = ("[REDACTED]", "<REDACTED>", "REDACTED", "***", "****", "xxxxx")
+
+EXTERNAL_NAME_HINTS = (
+    "page_text",
+    "file_content",
+    "document_text",
+    "doc_text",
+    "email_body",
+    "retrieved",
+    "retrieval",
+)
+
+REQUESTS_CONTENT_METHODS = {"requests.get", "requests.post"}
+EXTERNAL_LOADERS = {"PyPDFLoader", "WebBaseLoader"}
+EXTERNAL_RETRIEVAL_SUFFIXES = {"get_relevant_documents", "similarity_search"}
+
+LLM_CALL_ROOTS = {"llm", "chain", "agent"}
+LLM_OUTPUT_ATTR_SUFFIXES = ("output_text", "choices.message.content")
+LLM_OUTPUT_CALL_ENDINGS = (
+    "client.responses.create",
+    "client.chat.completions.create",
+)
+
+# Sink families.
+UNSAFE_DESERIALIZATION_CALLS = {
+    "pickle.load",
+    "pickle.loads",
+    "joblib.load",
+    "torch.load",
 }
 
-# ---------------------------------------------------------------------------
-# Finding templates (keyed by analyzer "kind")
-# ---------------------------------------------------------------------------
-TEMPLATES = {
-    "llm05_code_exec": {
-        "owasp_category": OWASP["LLM05"],
-        "severity": "critical",
-        "status": "vulnerable",
-        "confidence": "high",
-        "title": "LLM output flows into code execution",
-        "reason": "LLM/untrusted output is passed to eval()/exec()/compile(), "
-                  "allowing arbitrary Python execution.",
-        "fix": "Never execute model output. Use allow-list actions, structured "
-               "outputs, or schema validation instead.",
-    },
-    "llm05_command_exec": {
-        "owasp_category": OWASP["LLM05"],
-        "severity": "critical",
-        "status": "vulnerable",
-        "confidence": "high",
-        "title": "LLM output flows into shell/command execution",
-        "reason": "Untrusted data reaches a system command (os.system/subprocess), "
-                  "enabling command injection. shell=True increases the risk.",
-        "fix": "Avoid shell execution of model output. Use fixed commands with "
-               "argument lists and validate inputs.",
-    },
-    "llm05_sql_exec": {
-        "owasp_category": OWASP["LLM05"],
-        "severity": "high",
-        "status": "vulnerable",
-        "confidence": "medium",
-        "title": "Untrusted data flows into SQL execution",
-        "reason": "Model/external data is passed to a SQL execute() call, "
-                  "risking SQL injection.",
-        "fix": "Use parameterized queries / prepared statements; never interpolate "
-               "untrusted data into SQL.",
-    },
-    "llm01_external_to_prompt": {
-        "owasp_category": OWASP["LLM01"],
-        "severity": "medium",
-        "status": "risky",
-        "confidence": "medium",
-        "title": "External content flows into LLM prompt",
-        "reason": "External/untrusted content (web page, file, RAG document) is placed "
-                  "into the prompt, enabling indirect prompt injection.",
-        "fix": "Treat external content as data: isolate it, add guardrails, and do not "
-               "let it override system instructions.",
-    },
-    "llm02_secret_to_prompt": {
-        "owasp_category": OWASP["LLM02"],
-        "severity": "high",
-        "status": "vulnerable",
-        "confidence": "high",
-        "title": "Secret flows into LLM input",
-        "reason": "A secret/credential is included in the prompt or messages sent to the LLM.",
-        "fix": "Keep secrets server-side. Never place credentials in prompts or messages.",
-    },
-    "llm07_secret_in_system": {
-        "owasp_category": OWASP["LLM07"],
-        "severity": "high",
-        "status": "vulnerable",
-        "confidence": "high",
-        "title": "Secret included in system prompt",
-        "reason": "A secret/internal value is embedded in the system prompt, which can "
-                  "be leaked via system-prompt extraction.",
-        "fix": "Remove secrets from system prompts; fetch sensitive data through secured "
-               "backend calls at request time.",
-    },
-    "llm02_exposure": {
-        "owasp_category": OWASP["LLM02"],
-        "severity": "medium",
-        "status": "risky",
-        "confidence": "medium",
-        "title": "Sensitive data flows into a logging/output sink",
-        "reason": "Secret or system-prompt content is written to logs/output/network, "
-                  "risking disclosure.",
-        "fix": "Redact secrets before logging or returning data.",
-    },
-    "llm06_agent_tool": {
-        "owasp_category": OWASP["LLM06"],
-        "severity": "critical",
-        "status": "vulnerable",
-        "confidence": "high",
-        "title": "Agent has access to a high-impact tool",
-        "reason": "An LLM agent is wired to a tool with dangerous capabilities "
-                  "(shell/file/DB/network).",
-        "fix": "Apply least privilege: restrict tools, require human approval, and "
-               "sandbox high-impact actions.",
-    },
-    "llm03_deserialization": {
-        "owasp_category": OWASP["LLM03"],
-        "severity": "high",
-        "status": "risky",
-        "confidence": "medium",
-        "title": "Unsafe deserialization of external artifact",
-        "reason": "Loading pickled/serialized model artifacts can execute arbitrary code "
-                  "if the file is untrusted.",
-        "fix": "Use safe formats (e.g. safetensors), verify integrity, and only load "
-               "trusted artifacts.",
-    },
-    "llm03_remote_code": {
-        "owasp_category": OWASP["LLM03"],
-        "severity": "high",
-        "status": "risky",
-        "confidence": "medium",
-        "title": "Remote model code execution is trusted",
-        "reason": "trust_remote_code=True executes code from the model repository, "
-                  "a supply-chain risk.",
-        "fix": "Avoid trust_remote_code unless the source is fully trusted and pinned.",
-    },
+CODE_EXEC_CALLS = {"eval", "exec"}
+SHELL_EXEC_CALLS = {
+    "os.system",
+    "subprocess.run",
+    "subprocess.Popen",
+    "subprocess.call",
+    "subprocess.check_call",
+    "subprocess.check_output",
 }
+SQL_EXEC_SUFFIXES = {"execute"}
+SQL_EXEC_ROOTS = {"cursor", "conn", "connection", "db", "session", "engine"}
 
-# ---------------------------------------------------------------------------
-# Source/Sink dictionary — UI Source/Sink Dictionary 탭 표시용
-# ---------------------------------------------------------------------------
-DICTIONARY = [
-    ("Source", "response.choices[0].message.content", "LLM output (untrusted)", "LLM05"),
-    ("Source", "response.content", "LLM output (untrusted)", "LLM05"),
-    ("Source", "llm.invoke(...) / chain.run(...) / agent.run(...)", "LLM output (untrusted)", "LLM05"),
-    ("Source", "ask_llm() / call_llm() / generate_response()", "LLM output (untrusted)", "LLM05"),
-    ("Source", "requests.get(...).text / .content", "External web content", "LLM01"),
-    ("Source", "open(...).read() / uploaded_file.read()", "External file content", "LLM01"),
-    ("Source", "doc.page_content / similarity_search(...)", "RAG / retrieved content", "LLM01"),
-    ("Source", "api_key, token, password, secret, ...", "Secret-like variable name", "LLM02/LLM07"),
-    ("Source", "sk-..., ghp_..., postgresql://...", "Secret-like literal", "LLM02/LLM07"),
-    ("Sink", "eval(...) / exec(...) / compile(...)", "Code execution", "LLM05"),
-    ("Sink", "os.system(...) / subprocess.run(..., shell=True)", "Command execution", "LLM05"),
-    ("Sink", "cursor.execute(...) / db.execute(...)", "SQL execution", "LLM05"),
-    ("Sink", "chat.completions.create / llm.invoke / messages[].content", "LLM input", "LLM01/LLM02/LLM07"),
-    ("Sink", "{\"role\": \"system\", \"content\": ...}", "System prompt", "LLM07"),
-    ("Sink", "print(...) / logger.debug(...) / requests.post(...)", "Logging / exposure", "LLM02"),
-    ("Sink", "Tool(...) / @tool / initialize_agent(...)", "Agent tool capability", "LLM06"),
-    ("Sink", "pickle.load / torch.load / joblib.load", "Unsafe deserialization", "LLM03"),
-    ("Sink", "from_pretrained(..., trust_remote_code=True)", "Remote code execution", "LLM03"),
+LLM_INPUT_KEYWORDS = {"messages", "input", "prompt", "content", "text"}
+SYSTEM_PROMPT_NAMES = {"system_prompt", "system_message", "system_instructions"}
+
+# Agent/tool capability patterns.
+TOOL_FACTORY_SUFFIXES = {"Tool.from_function", "StructuredTool.from_function"}
+TOOL_CONSTRUCTOR_NAMES = {"Tool", "StructuredTool"}
+AGENT_BINDING_CALLS = {
+    "initialize_agent",
+    "AgentExecutor",
+    "create_react_agent",
+    "create_openai_functions_agent",
+}
+DESTRUCTIVE_OR_EXECUTION_CALLS = SHELL_EXEC_CALLS | {
+    "os.remove",
+    "os.unlink",
+    "shutil.rmtree",
+    "Path.unlink",
+    "eval",
+    "exec",
+}
+EXTERNAL_SIDE_EFFECT_CALLS = {
+    "smtp.sendmail",
+    "send_email",
+    "requests.post",
+    "requests.put",
+    "requests.delete",
+}
+SQL_WRITE_VERBS = ("insert", "update", "delete", "drop", "alter", "create", "truncate")
+
+
+# UI/backward-compatible tables.
+RULE_TABLE = [
+    {"no": index, **asdict(rule)}
+    for index, rule in enumerate(REQUIRED_RULES, start=1)
 ]
 
-# ---------------------------------------------------------------------------
-# Required Rule Table (10개) — About 탭 표시용
-# ---------------------------------------------------------------------------
-
-RULE_TABLE: list[dict] = [
-    {
-        "No": 1,
-        "Rule ID":        "LLM01_EXTERNAL_CONTENT_TO_LLM_PROMPT",
-        "Category":       "LLM01:2025 Prompt Injection",
-        "Detection Type": "ast_taint",
-        "Source Kind":    "external_content",
-        "Sink Kind":      "llm_input",
-        "Status":         "risky",
-        "Severity":       "medium",
-        "Confidence":     0.75,
-    },
-    {
-        "No": 2,
-        "Rule ID":        "LLM02_SECRET_TO_LLM_INPUT",
-        "Category":       "LLM02:2025 Sensitive Information Disclosure",
-        "Detection Type": "ast_taint",
-        "Source Kind":    "secret",
-        "Sink Kind":      "llm_input",
-        "Status":         "vulnerable",
-        "Severity":       "high",
-        "Confidence":     0.75,
-    },
-    {
-        "No": 3,
-        "Rule ID":        "LLM03_UNSAFE_DESERIALIZATION",
-        "Category":       "LLM03:2025 Supply Chain",
-        "Detection Type": "ast_search",
-        "Source Kind":    "serialized_artifact",
-        "Sink Kind":      "unsafe_deserialization",
-        "Status":         "risky",
-        "Severity":       "high",
-        "Confidence":     0.9,
-    },
-    {
-        "No": 4,
-        "Rule ID":        "LLM03_TRUST_REMOTE_CODE_TRUE",
-        "Category":       "LLM03:2025 Supply Chain",
-        "Detection Type": "ast_search",
-        "Source Kind":    "remote_model",
-        "Sink Kind":      "remote_code_trust",
-        "Status":         "risky",
-        "Severity":       "high",
-        "Confidence":     0.9,
-    },
-    {
-        "No": 5,
-        "Rule ID":        "LLM05_LLM_OUTPUT_TO_CODE_EXECUTION",
-        "Category":       "LLM05:2025 Improper Output Handling",
-        "Detection Type": "ast_taint",
-        "Source Kind":    "llm_output",
-        "Sink Kind":      "code_execution",
-        "Status":         "vulnerable",
-        "Severity":       "critical",
-        "Confidence":     0.9,
-    },
-    {
-        "No": 6,
-        "Rule ID":        "LLM05_LLM_OUTPUT_TO_SHELL",
-        "Category":       "LLM05:2025 Improper Output Handling",
-        "Detection Type": "ast_taint",
-        "Source Kind":    "llm_output",
-        "Sink Kind":      "shell_execution",
-        "Status":         "vulnerable",
-        "Severity":       "critical",
-        "Confidence":     0.9,
-    },
-    {
-        "No": 7,
-        "Rule ID":        "LLM05_LLM_OUTPUT_TO_SQL",
-        "Category":       "LLM05:2025 Improper Output Handling",
-        "Detection Type": "ast_taint",
-        "Source Kind":    "llm_output",
-        "Sink Kind":      "sql_execution",
-        "Status":         "vulnerable",
-        "Severity":       "critical",
-        "Confidence":     0.9,
-    },
-    {
-        "No": 8,
-        "Rule ID":        "LLM06_AGENT_TOOL_DESTRUCTIVE_OR_EXECUTION",
-        "Category":       "LLM06:2025 Excessive Agency",
-        "Detection Type": "ast_capability",
-        "Source Kind":    "tool_capability",
-        "Sink Kind":      "destructive_or_execution",
-        "Status":         "risky",
-        "Severity":       "critical",
-        "Confidence":     0.9,
-    },
-    {
-        "No": 9,
-        "Rule ID":        "LLM06_AGENT_TOOL_EXTERNAL_SIDE_EFFECT",
-        "Category":       "LLM06:2025 Excessive Agency",
-        "Detection Type": "ast_capability",
-        "Source Kind":    "tool_capability",
-        "Sink Kind":      "external_side_effect",
-        "Status":         "risky",
-        "Severity":       "high",
-        "Confidence":     0.75,
-    },
-    {
-        "No": 10,
-        "Rule ID":        "LLM07_SECRET_IN_SYSTEM_PROMPT",
-        "Category":       "LLM07:2025 System Prompt Leakage",
-        "Detection Type": "ast_taint",
-        "Source Kind":    "secret",
-        "Sink Kind":      "system_prompt",
-        "Status":         "vulnerable",
-        "Severity":       "high",
-        "Confidence":     0.75,
-    },
+DICTIONARY = [
+    ("Source", "requests.get(...).text / open(...).read()", "External content", "LLM01"),
+    ("Source", "os.getenv(...) / os.environ[...] / api_key", "Secret", "LLM02/LLM07"),
+    ("Source", "llm.invoke(...) / response.output_text", "LLM output", "LLM05"),
+    ("Source", "pickle/joblib/torch artifacts", "Serialized artifact", "LLM03"),
+    ("Source", "Tool functions bound to agents", "Tool capability", "LLM06"),
+    ("Sink", "llm.invoke(...) / messages= / input=", "LLM input", "LLM01/LLM02"),
+    ("Sink", '{"role": "system", "content": ...}', "System prompt", "LLM07"),
+    ("Sink", "eval(...) / exec(...)", "Code execution", "LLM05"),
+    ("Sink", "os.system(...) / subprocess.run(...)", "Shell execution", "LLM05"),
+    ("Sink", "cursor.execute(...) / db.execute(...)", "SQL execution", "LLM05"),
+    ("Sink", "pickle.load / torch.load / joblib.load", "Unsafe deserialization", "LLM03"),
+    ("Sink", "from_pretrained(..., trust_remote_code=True)", "Remote code trust", "LLM03"),
+    ("Sink", "initialize_agent(... tools ...)", "Agent tool binding", "LLM06"),
 ]

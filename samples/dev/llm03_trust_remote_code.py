@@ -2,7 +2,4 @@
 
 from transformers import AutoModel
 
-model = AutoModel.from_pretrained(
-    model_name,
-    trust_remote_code=True
-)
+model = AutoModel.from_pretrained("example/model", trust_remote_code=True)

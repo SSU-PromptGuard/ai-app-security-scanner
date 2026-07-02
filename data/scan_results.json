@@ -1,0 +1,452 @@
+[
+  {
+    "target": "samples\\dev\\llm01_external_to_prompt.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [
+      {
+        "finding_id": "pg-9ac59ddaa6cb",
+        "rule_id": "LLM01_EXTERNAL_CONTENT_TO_LLM_PROMPT",
+        "category": "LLM01:2025 Prompt Injection",
+        "status": "risky",
+        "severity": "medium",
+        "file": "samples\\dev\\llm01_external_to_prompt.py",
+        "line": 6,
+        "source_kind": "external_content",
+        "source": "requests.get('https://example.com').text",
+        "sink_kind": "llm_input",
+        "sink": "llm.invoke(...)",
+        "flow": "requests.get('https://example.com').text -> llm.invoke(...)",
+        "evidence": "llm.invoke(f'Summarize this page: {page}')",
+        "confidence": 0.75
+      }
+    ],
+    "summary": {
+      "total_findings": 1,
+      "by_severity": {
+        "critical": 0,
+        "high": 0,
+        "medium": 1,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 0,
+        "risky": 1
+      },
+      "by_category": {
+        "LLM01:2025 Prompt Injection": 1
+      }
+    }
+  },
+  {
+    "target": "samples\\dev\\llm02_secret_to_prompt.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [
+      {
+        "finding_id": "pg-5945389975c2",
+        "rule_id": "LLM02_SECRET_TO_LLM_INPUT",
+        "category": "LLM02:2025 Sensitive Information Disclosure",
+        "status": "vulnerable",
+        "severity": "high",
+        "file": "samples\\dev\\llm02_secret_to_prompt.py",
+        "line": 6,
+        "source_kind": "secret",
+        "source": "os.getenv('OPENAI_API_KEY')",
+        "sink_kind": "llm_input",
+        "sink": "client.responses.create(...)",
+        "flow": "os.getenv('OPENAI_API_KEY') -> client.responses.create(...)",
+        "evidence": "client.responses.create(input=f'Use this key: {api_key}')",
+        "confidence": 0.75
+      }
+    ],
+    "summary": {
+      "total_findings": 1,
+      "by_severity": {
+        "critical": 0,
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 1,
+        "risky": 0
+      },
+      "by_category": {
+        "LLM02:2025 Sensitive Information Disclosure": 1
+      }
+    }
+  },
+  {
+    "target": "samples\\dev\\llm03_trust_remote_code.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [
+      {
+        "finding_id": "pg-1b1549afcd77",
+        "rule_id": "LLM03_TRUST_REMOTE_CODE_TRUE",
+        "category": "LLM03:2025 Supply Chain",
+        "status": "risky",
+        "severity": "high",
+        "file": "samples\\dev\\llm03_trust_remote_code.py",
+        "line": 5,
+        "source_kind": "remote_model",
+        "source": "remote model",
+        "sink_kind": "remote_code_trust",
+        "sink": "AutoModel.from_pretrained(..., trust_remote_code=True)",
+        "flow": "remote model -> AutoModel.from_pretrained(..., trust_remote_code=True)",
+        "evidence": "AutoModel.from_pretrained('example/model', trust_remote_code=True)",
+        "confidence": 0.9
+      }
+    ],
+    "summary": {
+      "total_findings": 1,
+      "by_severity": {
+        "critical": 0,
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 0,
+        "risky": 1
+      },
+      "by_category": {
+        "LLM03:2025 Supply Chain": 1
+      }
+    }
+  },
+  {
+    "target": "samples\\dev\\llm03_unsafe_load.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [
+      {
+        "finding_id": "pg-a33c1a5f5a00",
+        "rule_id": "LLM03_UNSAFE_DESERIALIZATION",
+        "category": "LLM03:2025 Supply Chain",
+        "status": "risky",
+        "severity": "high",
+        "file": "samples\\dev\\llm03_unsafe_load.py",
+        "line": 5,
+        "source_kind": "serialized_artifact",
+        "source": "open('model.pkl', 'rb')",
+        "sink_kind": "unsafe_deserialization",
+        "sink": "pickle.load(...)",
+        "flow": "open('model.pkl', 'rb') -> pickle.load(...)",
+        "evidence": "pickle.load(open('model.pkl', 'rb'))",
+        "confidence": 0.9
+      }
+    ],
+    "summary": {
+      "total_findings": 1,
+      "by_severity": {
+        "critical": 0,
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 0,
+        "risky": 1
+      },
+      "by_category": {
+        "LLM03:2025 Supply Chain": 1
+      }
+    }
+  },
+  {
+    "target": "samples\\dev\\llm05_eval.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [
+      {
+        "finding_id": "pg-e00388f6432b",
+        "rule_id": "LLM05_LLM_OUTPUT_TO_CODE_EXECUTION",
+        "category": "LLM05:2025 Improper Output Handling",
+        "status": "vulnerable",
+        "severity": "critical",
+        "file": "samples\\dev\\llm05_eval.py",
+        "line": 4,
+        "source_kind": "llm_output",
+        "source": "llm.invoke('write a Python expression')",
+        "sink_kind": "code_execution",
+        "sink": "eval(...)",
+        "flow": "llm.invoke('write a Python expression') -> eval(...)",
+        "evidence": "eval(result)",
+        "confidence": 0.9
+      }
+    ],
+    "summary": {
+      "total_findings": 1,
+      "by_severity": {
+        "critical": 1,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 1,
+        "risky": 0
+      },
+      "by_category": {
+        "LLM05:2025 Improper Output Handling": 1
+      }
+    }
+  },
+  {
+    "target": "samples\\dev\\llm05_shell.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [
+      {
+        "finding_id": "pg-3eff39c8b3af",
+        "rule_id": "LLM05_LLM_OUTPUT_TO_SHELL",
+        "category": "LLM05:2025 Improper Output Handling",
+        "status": "vulnerable",
+        "severity": "critical",
+        "file": "samples\\dev\\llm05_shell.py",
+        "line": 6,
+        "source_kind": "llm_output",
+        "source": "agent.run('build a shell command')",
+        "sink_kind": "shell_execution",
+        "sink": "subprocess.run(...)",
+        "flow": "agent.run('build a shell command') -> subprocess.run(...)",
+        "evidence": "subprocess.run(command, shell=True)",
+        "confidence": 0.9
+      }
+    ],
+    "summary": {
+      "total_findings": 1,
+      "by_severity": {
+        "critical": 1,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 1,
+        "risky": 0
+      },
+      "by_category": {
+        "LLM05:2025 Improper Output Handling": 1
+      }
+    }
+  },
+  {
+    "target": "samples\\dev\\llm05_sql.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [
+      {
+        "finding_id": "pg-e822aefc5bf7",
+        "rule_id": "LLM05_LLM_OUTPUT_TO_SQL",
+        "category": "LLM05:2025 Improper Output Handling",
+        "status": "vulnerable",
+        "severity": "critical",
+        "file": "samples\\dev\\llm05_sql.py",
+        "line": 4,
+        "source_kind": "llm_output",
+        "source": "chain.run('write a SQL statement')",
+        "sink_kind": "sql_execution",
+        "sink": "cursor.execute(...)",
+        "flow": "chain.run('write a SQL statement') -> cursor.execute(...)",
+        "evidence": "cursor.execute(sql)",
+        "confidence": 0.9
+      }
+    ],
+    "summary": {
+      "total_findings": 1,
+      "by_severity": {
+        "critical": 1,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 1,
+        "risky": 0
+      },
+      "by_category": {
+        "LLM05:2025 Improper Output Handling": 1
+      }
+    }
+  },
+  {
+    "target": "samples\\dev\\llm06_agent_destructive_tool.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [
+      {
+        "finding_id": "pg-bd33446b1ed2",
+        "rule_id": "LLM06_AGENT_TOOL_DESTRUCTIVE_OR_EXECUTION",
+        "category": "LLM06:2025 Excessive Agency",
+        "status": "risky",
+        "severity": "critical",
+        "file": "samples\\dev\\llm06_agent_destructive_tool.py",
+        "line": 13,
+        "source_kind": "tool_capability",
+        "source": "run_shell(): os.system",
+        "sink_kind": "destructive_or_execution",
+        "sink": "initialize_agent(...)",
+        "flow": "run_shell(): os.system -> initialize_agent(...)",
+        "evidence": "tool run_shell is bound to an agent",
+        "confidence": 0.9
+      }
+    ],
+    "summary": {
+      "total_findings": 1,
+      "by_severity": {
+        "critical": 1,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 0,
+        "risky": 1
+      },
+      "by_category": {
+        "LLM06:2025 Excessive Agency": 1
+      }
+    }
+  },
+  {
+    "target": "samples\\dev\\llm06_agent_external_side_effect.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [
+      {
+        "finding_id": "pg-62a1f155ff0b",
+        "rule_id": "LLM06_AGENT_TOOL_EXTERNAL_SIDE_EFFECT",
+        "category": "LLM06:2025 Excessive Agency",
+        "status": "risky",
+        "severity": "high",
+        "file": "samples\\dev\\llm06_agent_external_side_effect.py",
+        "line": 13,
+        "source_kind": "tool_capability",
+        "source": "post_webhook(): requests.post",
+        "sink_kind": "external_side_effect",
+        "sink": "initialize_agent(...)",
+        "flow": "post_webhook(): requests.post -> initialize_agent(...)",
+        "evidence": "tool post_webhook is bound to an agent",
+        "confidence": 0.75
+      }
+    ],
+    "summary": {
+      "total_findings": 1,
+      "by_severity": {
+        "critical": 0,
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 0,
+        "risky": 1
+      },
+      "by_category": {
+        "LLM06:2025 Excessive Agency": 1
+      }
+    }
+  },
+  {
+    "target": "samples\\dev\\llm07_secret_system_prompt.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [
+      {
+        "finding_id": "pg-e7801cd65c1c",
+        "rule_id": "LLM07_SECRET_IN_SYSTEM_PROMPT",
+        "category": "LLM07:2025 System Prompt Leakage",
+        "status": "vulnerable",
+        "severity": "high",
+        "file": "samples\\dev\\llm07_secret_system_prompt.py",
+        "line": 7,
+        "source_kind": "secret",
+        "source": "os.getenv('ADMIN_TOKEN')",
+        "sink_kind": "system_prompt",
+        "sink": "{\"role\": \"system\", \"content\": ...}",
+        "flow": "os.getenv('ADMIN_TOKEN') -> {\"role\": \"system\", \"content\": ...}",
+        "evidence": "{'role': 'system', 'content': f'Admin token: {admin_token}'}",
+        "confidence": 0.75
+      }
+    ],
+    "summary": {
+      "total_findings": 1,
+      "by_severity": {
+        "critical": 0,
+        "high": 1,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 1,
+        "risky": 0
+      },
+      "by_category": {
+        "LLM07:2025 System Prompt Leakage": 1
+      }
+    }
+  },
+  {
+    "target": "samples\\dev\\safe_basic_llm_call.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [],
+    "summary": {
+      "total_findings": 0,
+      "by_severity": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 0,
+        "risky": 0
+      },
+      "by_category": {}
+    }
+  },
+  {
+    "target": "samples\\dev\\safe_env_client_only.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [],
+    "summary": {
+      "total_findings": 0,
+      "by_severity": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 0,
+        "risky": 0
+      },
+      "by_category": {}
+    }
+  },
+  {
+    "target": "samples\\dev\\safe_readonly_tool.py",
+    "ok": true,
+    "parse_error": null,
+    "findings": [],
+    "summary": {
+      "total_findings": 0,
+      "by_severity": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "by_status": {
+        "vulnerable": 0,
+        "risky": 0
+      },
+      "by_category": {}
+    }
+  }
+]
