@@ -9,7 +9,7 @@ import pandas as pd
 
 from .analyzer import analyze_code
 
-POSITIVE_LABELS = {"vulnerable", "risky"}
+POSITIVE_LABELS = {"vulnerable", "risky", "vuln"}
 
 
 def _safe_div(num: float, den: float) -> float:
@@ -45,14 +45,22 @@ def evaluate(project_root: str, labels_path: Optional[str] = None):
         detected = sorted({code for f in findings for code in f.owasp_codes()})
 
         expected_positive = str(row["label"]).strip().lower() in POSITIVE_LABELS
-        predicted_positive = len(findings) > 0
+        expected_rule_ids = [
+            item.strip()
+            for item in str(row.get("rule_id", "")).split("|")
+            if item.strip()
+        ]
+        predicted_rule_ids = [f.rule_id for f in findings]
+        predicted_positive = bool(predicted_rule_ids)
 
-        if expected_positive and predicted_positive:
-            result = "TP"; tp += 1
+        if expected_positive:
+            matched = bool(set(predicted_rule_ids) & set(expected_rule_ids)) if expected_rule_ids else predicted_positive
+            if matched:
+                result = "TP"; tp += 1
+            else:
+                result = "FN"; fn += 1
         elif not expected_positive and predicted_positive:
             result = "FP"; fp += 1
-        elif expected_positive and not predicted_positive:
-            result = "FN"; fn += 1
         else:
             result = "TN"; tn += 1
 
@@ -61,6 +69,8 @@ def evaluate(project_root: str, labels_path: Optional[str] = None):
             "expected_label": row["label"],
             "predicted_label": "positive" if predicted_positive else "negative",
             "expected_category": row["category"],
+            "expected_rule_id": "|".join(expected_rule_ids),
+            "detected_rule_ids": ", ".join(predicted_rule_ids) if predicted_rule_ids else "-",
             "detected_categories": ", ".join(detected) if detected else "-",
             "n_findings": len(findings),
             "result": result,

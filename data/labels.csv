@@ -1,0 +1,17 @@
+sample_id,file,label,category,rule_id,source,sink,sanitizer,severity,reason,split
+llm05_v1,samples/dev/llm05_v1.py,vuln,LLM05,LLM05_LLM_OUTPUT_TO_CODE_EXECUTION,response.choices[0].message.content,eval(),,critical,모델 출력을 eval로 그대로 실행 -> 임의 코드 실행,dev
+llm05_v2,samples/dev/llm05_v2.py,vuln,LLM05,LLM05_LLM_OUTPUT_TO_SQL,response.choices[0].message.content,cursor.execute(f-string),,critical,모델 출력을 f-string으로 SQL에 합쳐 실행 -> SQL injection,dev
+llm05_v3,samples/test/llm05_v3.py,vuln,LLM05,LLM05_LLM_OUTPUT_TO_SHELL,message.content,subprocess(shell=True),,critical,모델 출력을 shell=True 서브프로세스로 실행 -> 명령 주입,test
+llm05_s1,samples/dev/llm05_s1.py,safe,LLM05,,response.choices[0].message.content,ast.literal_eval(),ast.literal_eval,-,eval 대신 ast.literal_eval로 파싱 -> 코드 실행 불가 (near-miss),dev
+llm05_s2,samples/test/llm05_s2.py,safe,LLM05,,response.choices[0].message.content,cursor.execute(params),parameterized_query,-,파라미터라이즈드 쿼리로 분리 -> SQL injection 불가 (near-miss),test
+llm06_v1,samples/dev/llm06_v1.py,vuln,LLM06,LLM06_AGENT_TOOL_DESTRUCTIVE_OR_EXECUTION,agent.run(user_input),subprocess.check_output(shell=True),,critical,셸 도구를 allow-list/승인 없이 에이전트에 부여 -> 임의 셸 실행,dev
+llm06_v2,samples/test/llm06_v2.py,vuln,LLM06,LLM06_AGENT_TOOL_DESTRUCTIVE_OR_EXECUTION,agent.invoke(user_input),shutil.rmtree(),,critical,파일 삭제 도구를 승인 단계 없이 에이전트에 부여,test
+llm06_s1,samples/test/llm06_s1.py,safe,LLM06,,agent.run(user_input),read_only_tool,allowlist_approval,-,read-only 도구 + 명령 allow-list -> 위험 실행 없음 (near-miss),test
+llm01_r1,samples/dev/llm01_r1.py,risky,LLM01,LLM01_EXTERNAL_CONTENT_TO_LLM_PROMPT,requests.get(url).text,prompt f-string,,high,외부 페이지 내용을 그대로 프롬프트에 합침 -> 간접 프롬프트 인젝션,dev
+llm01_r2,samples/test/llm01_r2.py,risky,LLM01,LLM01_EXTERNAL_CONTENT_TO_LLM_PROMPT,Path.read_text(),messages content,,high,업로드 파일 내용을 정제 없이 프롬프트로 -> 간접 인젝션,test
+llm01_s1,samples/test/llm01_s1.py,safe,LLM01,,requests.get(url).text,prompt (fenced),delimiter_fencing,-,외부 콘텐츠를 구분자로 펜싱하고 데이터로만 취급 (near-miss),test
+llm02_v1,samples/dev/llm02_v1.py,vuln,LLM02,LLM02_SECRET_TO_LLM_INPUT,user.email (PII),prompt content,,high,사용자 PII를 그대로 프롬프트에 실어 외부 API로 전송,dev
+llm07_v1,samples/test/llm07_v1.py,vuln,LLM07,LLM07_SECRET_IN_SYSTEM_PROMPT,api_key="sk-..." (하드코딩 시크릿),system prompt,,high,시크릿을 system 프롬프트에 삽입 -> 프롬프트 유출 시 노출,test
+llm02_s1,samples/test/llm02_s1.py,safe,LLM02,,user.email (PII),prompt content,pii_redaction,-,프롬프트 전 PII 마스킹/레닥션 적용 (near-miss),test
+llm03_r1,samples/dev/llm03_r1.py,risky,LLM03,LLM03_UNSAFE_DESERIALIZATION,untrusted .pkl,pickle.loads(),,high,신뢰 못 할 pickle 역직렬화 -> 임의 코드 실행,dev
+llm03_r2,samples/test/llm03_r2.py,risky,LLM03,LLM03_TRUST_REMOTE_CODE_TRUE,remote model,from_pretrained(trust_remote_code=True),,high,trust_remote_code=True로 원격 코드 실행 허용,test

@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from scanner import analyze_code, evaluate
+from scanner.exporter import export_findings
 from scanner.models import Finding
 from scanner.rules import DICTIONARY, RULE_TABLE
 
@@ -20,18 +21,19 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 SAMPLES_DIR = os.path.join(ROOT, "samples")
 
 SAMPLE_OPTIONS = {
-    "LLM05 - Vulnerable eval": "llm05_vuln_eval.py",
-    "LLM05 - Vulnerable subprocess (shell)": "llm05_vuln_subprocess.py",
-    "LLM05 - Safe print": "llm05_safe_print.py",
-    "LLM05 - Safe allow-list": "llm05_safe_allowlist.py",
-    "LLM01 - External web content to prompt": "llm01_risky_web_prompt.py",
-    "LLM01 - File content to prompt": "llm01_risky_file_prompt.py",
-    "LLM06 - Agent with shell tool": "llm06_vuln_shell_tool.py",
-    "LLM06 - Agent with read-only tool (safe)": "llm06_safe_readonly_tool.py",
-    "LLM02/07 - Secret in system prompt": "llm02_07_vuln_system_secret.py",
-    "LLM02 - Env client only (safe)": "llm02_safe_env_client_only.py",
-    "LLM03 - pickle.load": "llm03_risky_pickle_load.py",
-    "LLM03 - trust_remote_code=True": "llm03_risky_trust_remote_code.py",
+    "LLM05 - Vulnerable eval": "dev/llm05_v1.py",
+    "LLM05 - Vulnerable SQL injection": "dev/llm05_v2.py",
+    "LLM05 - Vulnerable subprocess (shell)": "test/llm05_v3.py",
+    "LLM05 - Safe literal eval": "dev/llm05_s1.py",
+    "LLM05 - Safe parameterized query": "test/llm05_s2.py",
+    "LLM01 - External web content to prompt": "dev/llm01_r1.py",
+    "LLM01 - File content to prompt": "test/llm01_r2.py",
+    "LLM06 - Agent with shell tool": "dev/llm06_v1.py",
+    "LLM06 - Agent with read-only tool (safe)": "test/llm06_s1.py",
+    "LLM02/07 - Secret in system prompt": "test/llm07_v1.py",
+    "LLM02 - PII prompt sample": "dev/llm02_v1.py",
+    "LLM03 - pickle.load": "dev/llm03_r1.py",
+    "LLM03 - trust_remote_code=True": "test/llm03_r2.py",
 }
 
 SEVERITY_STYLE = {
@@ -229,6 +231,17 @@ with tab_scan:
             )
         else:
             render_findings_summary(findings)
+            col_csv, col_md = st.columns(2)
+            with col_csv:
+                if st.button("Export CSV", use_container_width=True):
+                    path = os.path.join(ROOT, "reports", "latest_scan.csv")
+                    export_findings(findings, path, fmt="csv")
+                    st.success(f"Saved CSV report to {path}")
+            with col_md:
+                if st.button("Export Markdown", use_container_width=True):
+                    path = os.path.join(ROOT, "reports", "latest_scan.md")
+                    export_findings(findings, path, fmt="md")
+                    st.success(f"Saved Markdown report to {path}")
             for f in findings:
                 render_finding(f)
 

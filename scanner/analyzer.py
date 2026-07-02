@@ -22,6 +22,12 @@ class Taint:
 class FunctionCapability:
     destructive_or_execution: list[str]
     external_side_effect: list[str]
+
+
+@dataclass
+class Taint:
+    kind: str
+    source: str
     line: int
 
 
@@ -118,7 +124,6 @@ def scan_file(path: str | Path) -> ScanResult:
 def analyze_code(source: str, filename: str = "<input>") -> list[Finding]:
     """Backward-compatible helper returning only findings."""
     return scan_code(source, filename).findings
-
 
 class Analyzer:
     """Shallow, single-file AST taint analyzer."""
@@ -848,11 +853,8 @@ class Analyzer:
             return set()
 
         if isinstance(node, ast.Call):
-            name = _call_name(node)
-            basename = _basename(name)
-            if name.endswith(tuple(rules.TOOL_FACTORY_SUFFIXES)) or basename in rules.TOOL_CONSTRUCTOR_NAMES:
-                func = self._extract_tool_function_name(node)
-                return {func} if func else set()
+            func = self._extract_tool_function_name(node)
+            return {func} if func else set()
 
         return set()
 
@@ -967,23 +969,29 @@ class Analyzer:
         confidence: float | None = None,
     ) -> None:
         rule = rules.get_rule(rule_id)
-        finding = Finding(
-            finding_id=build_finding_id(self.filename, rule_id, line, sink, source),
-            rule_id=rule.rule_id,
-            category=rule.category,
-            status=rule.status,
-            severity=rule.severity,
-            file=self.filename,
-            line=line,
-            source_kind=rule.source_kind,
-            source=source,
-            sink_kind=rule.sink_kind,
-            sink=sink,
-            flow=f"{source} -> {sink}",
-            evidence=evidence,
-            confidence=confidence if confidence is not None else rules.DEFAULT_CONFIDENCE[rule_id],
+        template_key = rules.RULE_KIND_BY_ID.get(rule_id, rule_id)
+        tpl = rules.TEMPLATES.get(template_key, {})
+        self.findings.append(
+            Finding(
+                finding_id=build_finding_id(self.filename, rule_id, line, sink, source),
+                rule_id=rule.rule_id,
+                title=tpl.get("title", rule.category),
+                owasp_category=rule.category,
+                status=rule.status,
+                severity=rule.severity,
+                filename=self.filename,
+                line=line,
+                source_kind=rule.source_kind,
+                source=source,
+                sink_kind=rule.sink_kind,
+                sink=sink,
+                flow=f"{source} -> {sink}",
+                reason=tpl.get("reason", ""),
+                fix=tpl.get("fix", ""),
+                evidence=evidence,
+                confidence=confidence if confidence is not None else rules.DEFAULT_CONFIDENCE.get(rule_id, 0.0),
+            )
         )
-        self.findings.append(finding)
 
     @staticmethod
     def _postprocess(findings: list[Finding]) -> list[Finding]:

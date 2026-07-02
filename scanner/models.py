@@ -25,37 +25,39 @@ def build_finding_id(
 
 @dataclass
 class Finding:
-    """A Layer A structural source-to-sink finding.
-
-    Layer A intentionally does not include reason/fix text. Explanations and
-    remediation guidance belong to later analysis layers.
-    """
+    """A Layer A structural source-to-sink finding."""
 
     finding_id: str
     rule_id: str
-    category: str
+    title: str
+    owasp_category: str
     status: str
     severity: str
-    file: str
+    filename: str
     line: int
     source_kind: str
     source: str
     sink_kind: str
     sink: str
     flow: str
+    reason: str
+    fix: str
     evidence: str
-    confidence: float
+    confidence: float | str = 0.0
 
     @property
-    def owasp_category(self) -> str:
-        """Backward-compatible alias used by older UI/evaluation code."""
-        return self.category
+    def category(self) -> str:
+        return self.owasp_category
 
-    def owasp_codes(self) -> list[str]:
-        return _OWASP_CODE_RE.findall(self.category)
+    @property
+    def file(self) -> str:
+        return self.filename
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["category"] = self.category
+        data["file"] = self.file
+        return data
 
 
 @dataclass

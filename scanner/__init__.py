@@ -1,23 +1,19 @@
 """PromptGuard Lite static analysis package."""
 
-from .analyzer import Analyzer, analyze_code, scan_code, scan_file
-from .models import Finding, ScanResult, ScanSummary
-
-
-def evaluate(*args, **kwargs):
-    """Lazy compatibility wrapper to avoid importing pandas during scans."""
-    from .evaluator import evaluate as _evaluate
-
-    return _evaluate(*args, **kwargs)
-
+from .analyzer import Analyzer, ScanResult, analyze_code, scan_code, scan_file
+from .evaluator import evaluate
+from .exporter import export_findings, findings_to_dataframe
+from .models import Finding, ScanSummary
 
 __all__ = [
     "Analyzer",
-    "Finding",
     "ScanResult",
-    "ScanSummary",
     "analyze_code",
-    "evaluate",
     "scan_code",
     "scan_file",
+    "evaluate",
+    "export_findings",
+    "findings_to_dataframe",
+    "Finding",
+    "ScanSummary",
 ]

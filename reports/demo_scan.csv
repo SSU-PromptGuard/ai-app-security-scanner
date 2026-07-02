@@ -1,0 +1,2 @@
+rule_id,owasp_category,severity,status,title,source,sink,flow,reason,fix,line,confidence
+llm05_code_exec,LLM05:2025 Improper Output Handling,critical,vulnerable,LLM output flows into code execution,response.choices[0].message.content,eval(...),response.choices[0].message.content → eval(...),"LLM/untrusted output is passed to eval()/exec()/compile(), allowing arbitrary Python execution.","Never execute model output. Use allow-list actions, structured outputs, or schema validation instead.",15,high
