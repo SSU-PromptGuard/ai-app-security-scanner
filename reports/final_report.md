@@ -62,19 +62,44 @@ finding은 **"LLM 애플리케이션에서 보안적으로 검토해야 할 위�
 │  · LLM 호출 지점 식별        │  → source → sink 흐름 탐지
 │  · 위험한 source / sink 식별 │  → Finding 객체 생성
 └──────────────┬──────────────┘
-               │
+               │ Finding 리스트
+               ▼
+┌─────────────────────────────┐
+│  레이어 B — LLM 판정관       │  숭실대 MindLogic API Gateway
+│  · Finding + 사용자 수준 입력 │  → GPT / Claude / Gemini 호출
+│  · reason / fix 생성        │  → JSON 응답 파싱
+└──────────────┬──────────────┘
+               │ reason + fix
                ▼
      [Finding 결과 카드]
-     severity · status · flow · evidence
+     severity · status · flow · evidence · reason · fix
 ```
 
-### 분석 방식
+### 레이어 A — 정적 분석
 
-scanner는 크게 3단계를 수행한다.
+코드를 실행하지 않고 Python AST만으로 위험 흐름을 탐지한다. 3단계로 수행된다.
 
 1. **Source marking** — external_content, secret, llm_output, serialized_artifact, remote_model, tool_capability 후보를 표시
 2. **Sink detection** — llm_input, system_prompt, code_execution, shell_execution, sql_execution, unsafe_deserialization, remote_code_trust, destructive_or_execution, external_side_effect를 탐지
-3. **Rule matching** — source_kind + sink_kind 조합이 required rule table과 일치하면 finding 생성
+3. **Rule matching** — source_kind + sink_kind 조합이 required rule table과 일치하면 Finding 생성
+
+### 레이어 B — LLM 판정관
+
+레이어 A가 생성한 Finding을 받아 LLM이 **reason**(왜 위험한지)과 **fix**(어떻게 수정할지)를 생성한다. 숭실대 MindLogic API Gateway를 통해 3사 모델을 호출하며, 사용자 수준에 따라 설명 어투를 다르게 한다.
+
+| 사용자 수준              | 설명 대상     | 어투                               |
+| ------------------------ | ------------- | ---------------------------------- |
+| 🟢 입문자 (beginner)     | Python 입문자 | 전문 용어 없이 일상적 언어         |
+| 🟡 개발자 (intermediate) | Python 개발자 | 기술적 용어 + 코드 수정 방향       |
+| 🔴 전문가 (expert)       | 보안 엔지니어 | OWASP, taint analysis 등 전문 용어 |
+
+**모델 선택 (3사 비교 실험 후 확정):**
+
+| 모델                         | 제공사    | SDK                                  |
+| ---------------------------- | --------- | ------------------------------------ |
+| `gpt-5.4`                    | OpenAI    | OpenAI SDK + `/v1/gateway`           |
+| `claude-sonnet-4-5-20250929` | Anthropic | Anthropic SDK + `/v1/gateway/claude` |
+| `gemini-3.1-pro-preview`     | Google    | OpenAI SDK + `/v1/gateway`           |
 
 ### 출력 구조
 
