@@ -15,6 +15,7 @@ import streamlit as st
 from scanner import analyze_code, evaluate
 from scanner.models import Finding
 from scanner.rules import DICTIONARY, RULE_TABLE
+from engine.layer_b import judge, MODELS, DEFAULT_MODEL
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SAMPLES_DIR = os.path.join(ROOT, "samples")
@@ -132,6 +133,14 @@ def render_finding(f: Finding) -> None:
         _row("Evidence",    f.evidence,  mono=True)
         _row("Line",        f.line)
         _row("Confidence",  f"{f.confidence:.0%}")
+        # 레이어 B가 생성한 reason / fix (있을 때만 표시)
+        if getattr(f, "reason", None):
+            st.divider()
+            _row("Reason (AI)", f.reason)
+        if getattr(f, "fix", None):
+            _row("Fix (AI)",    f.fix)
+        if getattr(f, "_judge_error", None):
+            st.caption(f"⚠️ Layer B error: {f._judge_error}")
 
 
 def severity_counts(findings: list[Finding]) -> dict[str, int]:
@@ -157,7 +166,7 @@ def render_findings_summary(findings: list[Finding]) -> None:
 
 st.set_page_config(page_title="PromptGuard Lite", page_icon="🛡️", layout="wide")
 
-st.title("🛡️ PromptGuard Lite")
+st.title("🛡️ PromptGuard")
 st.caption(
     "Static scanner for Python LLM apps — detects risky source → sink patterns "
     "(OWASP Top 10 for LLM Applications 2025). It does **not** execute your code."
@@ -190,6 +199,30 @@ with tab_scan:
             st.session_state.code = uploaded.read().decode("utf-8", errors="replace")
             st.session_state.last_findings = None
 
+        st.divider()
+        st.markdown("**🤖 AI 판정**")
+        use_layer_b = st.toggle("AI 판정 사용 (reason / fix 생성)", value=False)
+
+        if use_layer_b:
+            user_level = st.selectbox(
+                "설명 수준",
+                ["beginner", "intermediate", "expert"],
+                index=1,
+                format_func=lambda x: {
+                    "beginner":     "🟢 입문자 — 쉬운 설명",
+                    "intermediate": "🟡 개발자 — 기술적 설명",
+                    "expert":       "🔴 전문가 — 보안 심화 설명",
+                }[x],
+            )
+            judge_model = st.selectbox(
+                "판정 모델",
+                list(MODELS.keys()),
+                format_func=lambda x: MODELS[x],
+            )
+        else:
+            user_level = "intermediate"
+            judge_model = DEFAULT_MODEL
+
         scan = st.button("🔍 Scan", type="primary", use_container_width=True)
 
     with right:
@@ -211,9 +244,22 @@ with tab_scan:
             st.session_state.last_findings = None
         else:
             st.session_state.syntax_error = None
-            st.session_state.last_findings = analyze_code(
-                st.session_state.code, "<input>"
-            )
+            findings = analyze_code(st.session_state.code, "<input>")
+
+            # 레이어 B: reason / fix 생성
+            if use_layer_b and findings:
+                with st.spinner("🤖 AI 판정 중..."):
+                    for f in findings:
+                        result = judge(
+                            f.to_dict(),
+                            user_level=user_level,
+                            model=judge_model,
+                        )
+                        f.reason = result.reason
+                        f.fix    = result.fix
+                        f._judge_error = result.error
+
+            st.session_state.last_findings = findings
 
     if st.session_state.get("syntax_error"):
         st.divider()
@@ -281,25 +327,27 @@ with tab_dict:
 # Tab 4: About / Scope
 # ===========================================================================
 with tab_about:
-    st.subheader("About PromptGuard Lite")
+    st.subheader("About PromptGuard")
 
     st.markdown(
         """
-**Purpose.** PromptGuard Lite checks whether a Python LLM/agent application
-*uses LLMs safely*. It does not judge whether a prompt is malicious — it
-inspects **code structure and data flow** to surface risky `source → sink` patterns.
+**Purpose.** 
+
+PromptGuard는 Python LLM/에이전트 애플리케이션이 *LLM을 안전하게 사용하는지* 검사합니다. 프롬프트 자체의 악의성 여부를 판단하는 것이 아니라, **코드 구조와 데이터 흐름**을 조사하여 위험한 `source → sink` 패턴을 포착합니다.
 
 **Detection Philosophy.**
-Finding은 "이 코드는 반드시 공격당한다"는 의미가 아니다.
-Finding은 *"LLM 애플리케이션에서 보안적으로 검토해야 할 위험한 source-to-sink 흐름 또는 위험 API 사용 패턴이 존재한다"* 는 의미다.
+
+Finding은 "이 코드는 반드시 공격당한다"는 의미가 아닙니다.
+Finding은 "LLM 애플리케이션에서 보안적으로 검토해야 할 위험한 source-to-sink 흐름 또는 위험 API 사용 패턴이 존재한다" 는 의미입니다.
 - LLM01: prompt 내용의 악의성이 아닌, 외부 콘텐츠가 LLM prompt로 들어가는 **구조**를 탐지
 - LLM05: LLM output이 검증 없이 eval/shell/SQL sink로 전달되는 **구조**를 탐지
 - LLM06: agent가 tool을 실제로 호출했는지가 아닌, 고위험 capability가 **연결되어 있는지**를 탐지
 - LLM02/07: secret/internal info가 LLM 입력·log·system prompt에 **포함되는 구조**를 탐지
 - LLM03: 전체 supply chain audit이 아닌, **unsafe loading pattern**만 탐지
 
-**Analysis method.** Python `ast` structural analysis + simple variable taint tracking
-+ light regex/string heuristics. No third-party scanner is required.
+**Analysis method.** 
+
+Python ast 구조 분석 + 간단한 변수 오염 추적(Taint Tracking) + 가벼운 정규식/문자열 휴리스틱 알고리즘을 사용합니다. 별도의 서드파티 스캐너는 필요하지 않습니다.
 """
     )
 
@@ -313,7 +361,7 @@ Finding은 *"LLM 애플리케이션에서 보안적으로 검토해야 할 위�
     st.dataframe(scope_df, use_container_width=True, hide_index=True)
 
     st.divider()
-    st.subheader("Status / Severity 정의")
+    st.subheader("Status / Severity")
 
     col1, col2 = st.columns(2)
     with col1:
