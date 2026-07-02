@@ -443,27 +443,136 @@ agent = initialize_agent([delete_file], llm)  # agent에 연결
 
 ## 7. 데모 시나리오
 
-1. 멀쩡해 보이는 샘플 AI 챗봇 앱을 Scan 탭에 로드
-2. 🔍 Scan 버튼 클릭
-3. Finding 카드: "LLM output이 eval()로 흘러가는 경로" 를 빨갛게 표시
-4. Evaluation 탭: precision / recall 수치 확인
-5. Source/Sink Dictionary 탭: 탐지 기준 사전 확인
+### 시나리오 1 — 안전한 코드 (baseline)
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+print(response.choices[0].message.content)
+```
+
+→ Finding 없음. "No risky source → sink patterns detected" 표시.
+
+---
+
+### 시나리오 2 — LLM01 (risky, medium)
+
+```python
+import requests
+from langchain.llms import OpenAI
+
+llm = OpenAI()
+page = requests.get("https://example.com").text
+llm.invoke(f"Summarize this page: {page}")
+```
+
+→ `external_content → llm_input` 흐름 탐지. 외부 웹페이지 내용이 프롬프트로 들어가는 구조 경고.
+
+---
+
+### 시나리오 3 — LLM07 (vulnerable, high)
+
+```python
+import os
+from openai import OpenAI
+
+admin_token = os.getenv("ADMIN_TOKEN")
+client = OpenAI()
+client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": f"Admin token: {admin_token}"},
+        {"role": "user", "content": "Hello"}
+    ]
+)
+```
+
+→ `secret → system_prompt` 흐름 탐지. 민감정보가 system prompt에 포함되는 구조 경고.
+
+---
+
+### 시나리오 4 — LLM05 (vulnerable, critical) ⭐ 핵심 데모
+
+```python
+from langchain.llms import OpenAI
+
+llm = OpenAI()
+result = llm.invoke("write a Python expression")
+eval(result)
+```
+
+→ `llm_output → code_execution` 흐름 탐지. LLM 출력이 eval()로 직접 실행되는 치명적 패턴 경고.
+
+---
+
+### 레이어 B AI 판정 데모
+
+시나리오 4 코드에서 AI 판정(Layer B)을 활성화하면 사용자 수준별로 다른 설명이 생성된다.
+
+| 수준      | 설명 스타일                                                                                                  |
+| --------- | ------------------------------------------------------------------------------------------------------------ |
+| 🟢 입문자 | "LLM이 만든 코드를 그대로 실행하면 해커가 악성 코드를 심을 수 있어요"                                        |
+| 🟡 개발자 | "eval()은 LLM output을 Python 코드로 실행합니다. allowlist + JSON 구조화로 대체하세요"                       |
+| 🔴 전문가 | "LLM05 taint flow: llm_output → eval(). OWASP LLM05 위반. AST evaluator 또는 allowlist dispatch로 대체 권장" |
 
 ---
 
 ## 8. 기술 스택
 
-| 영역        | 도구                           |
-| ----------- | ------------------------------ |
-| 언어        | Python                         |
-| 정적 분석   | Python `ast` + 변수 taint 추적 |
-| UI          | Streamlit                      |
-| 데이터 분석 | pandas, plotly                 |
-| 데이터 수집 | GitHub API (PyGithub)          |
+| 영역                 | 도구                                                       |
+| -------------------- | ---------------------------------------------------------- |
+| 언어                 | Python                                                     |
+| 정적 분석 (레이어 A) | Python `ast` + 변수 taint 추적                             |
+| LLM 판정 (레이어 B)  | 숭실대 MindLogic API Gateway + OpenAI SDK / Anthropic SDK  |
+| 판정 모델            | GPT-5.4, Claude Sonnet 4.5, Gemini 3.1 Pro (3사 비교 실험) |
+| UI                   | Streamlit                                                  |
+| 데이터 분석          | pandas, plotly                                             |
+| 데이터 수집          | GitHub API (PyGithub)                                      |
 
 ---
 
-## 9. 한계 및 향후 계획
+## 8-1. 레이어 B — 3사 LLM 판정 모델 비교 실험
+
+### 실험 설정
+
+- **테스트 샘플:** LLM05 취약 코드 (`llm.invoke()` 결과를 `eval()`에 직접 전달)
+- **사용자 수준:** intermediate (개발자)
+- **응답 시간:** 3사 모두 약 15초
+- **Gateway:** 숭실대 MindLogic API Gateway
+
+### 모델별 응답 특징
+
+**GPT-5.4**
+
+가장 분량이 많고 기술적 깊이가 높았다. reason에서 단순 공격 시나리오 나열에 그치지 않고 "프롬프트 제약은 보안 통제가 아니다"라는 핵심 원칙을 명시했다. fix는 JSON + 화이트리스트 디스패치, 제한된 AST evaluator 두 가지 수정안을 코드와 함께 구체적으로 제시했다. 보안 전문가 관점에서 완성도가 가장 높았다.
+
+**Claude Sonnet 4.5**
+
+분량은 GPT보다 적었지만 핵심 내용을 모두 포함했다. OWASP LLM05 카테고리를 명시적으로 언급했고, fix에서 AST 화이트리스트 검증 코드를 실제로 제시했다. RestrictedPython, Docker 격리 등 실용적인 대안도 포함했다. 간결하면서도 실용성이 높은 응답이었다.
+
+**Gemini 3.1 Pro**
+
+세 모델 중 가장 읽기 쉽고 구조가 명확했다. 번호가 매겨진 단계별 구성으로 입문자도 따라가기 쉬웠다. `ast.literal_eval` / 수식 전용 라이브러리 / 샌드박스 세 가지 경우를 상황별로 나눠 제시한 점이 좋았다. 다만 기술적 깊이는 GPT보다 얕았다.
+
+### 비교 요약
+
+| 항목           | GPT-5.4 | Claude Sonnet 4.5 | Gemini 3.1 Pro |
+| -------------- | ------- | ----------------- | -------------- |
+| 기술적 깊이    | ★★★     | ★★☆               | ★★☆            |
+| 설명 가독성    | ★★☆     | ★★☆               | ★★★            |
+| 수정 코드 제시 | ★★★     | ★★★               | ★★☆            |
+| OWASP 명시     | 미언급  | LLM05 명시        | 미언급         |
+| 응답 간결성    | ★☆☆     | ★★☆               | ★★★            |
+
+### 최종 선택
+
+**Claude Sonnet 4.5** — OWASP 카테고리 명시, 코드 예시 포함, 간결성과 깊이의 균형이 가장 우수. 개발자 대상 설명으로 실용성이 높고, 사용자 수준별 어투 조정도 가장 자연스러웠다.
 
 **MVP 제외 범위 (현재 미지원):**
 
