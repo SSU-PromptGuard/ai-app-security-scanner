@@ -18,6 +18,20 @@ LLM·AI 에이전트를 사용하는 Python 코드를 스캔해, 그 코드가 A
 
 ---
 
+## 최근 변경 및 현재 상태 (요약)
+
+- 최근 커밋: `8e961c3` (2026-07-03) — 병합 충돌 해결 및 scanner 핵심 모듈 정리
+- 주요 수정 파일: [scanner/analyzer.py](scanner/analyzer.py#L1-L200), [scanner/models.py](scanner/models.py#L1-L200), [scanner/rules.py](scanner/rules.py#L1-L200), [scanner/__init__.py](scanner/__init__.py#L1-L80)
+- 추가된 항목: 여러 `samples/` 테스트 샘플 및 `tests/test_analyzer.py`, `tests/test_exporter.py`
+- 브랜치: 로컬 `jina` 커밋 후 `origin/jina`로 push 완료
+- 현재 알려진 이슈: 테스트 실행 시 `pandas` 미설치로 `scanner.evaluator` import 오류가 발생함 — `requirements.txt` 기반 패키지 설치 필요
+
+권장 조치:
+
+- 로컬/CI 환경에서 `python3 -m pip install -r requirements.txt` 실행 후 유닛 테스트 재실행
+- PR 생성 후 코드 리뷰 및 룰·검출 로직 검증 권장
+
+
 ## 2. 기획 의도 및 차별성
 
 ### 구현 결과 요약
