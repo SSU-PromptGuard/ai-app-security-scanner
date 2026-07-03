@@ -5,19 +5,6 @@
 
 ---
 
-## 1. 개요
-
-"AI로 보안하는" 도구는 많다. PromptGuard Lite는 반대로 **AI 앱의 보안**을 검사한다.
-LLM·AI 에이전트를 사용하는 Python 코드를 스캔해, 그 코드가 AI를 안전하게 쓰고 있는지
-정적 분석으로 검사하고, 위험한 패턴을 찾아 설명과 수정 방향을 제시하는 도구다.
-
-### 한 문장 요약
-
-> Python LLM 앱 코드를 붙여넣으면, OWASP LLM Top 10 기반의 위험한 `source → sink` 흐름을
-> 정적으로 탐지하고 결과 카드로 보여준다.
-
----
-
 ## 최근 변경 및 현재 상태 (요약)
 
 - 최근 커밋: `8e961c3` (2026-07-03) — 병합 충돌 해결 및 scanner 핵심 모듈 정리
@@ -31,27 +18,43 @@ LLM·AI 에이전트를 사용하는 Python 코드를 스캔해, 그 코드가 A
 - 로컬/CI 환경에서 `python3 -m pip install -r requirements.txt` 실행 후 유닛 테스트 재실행
 - PR 생성 후 코드 리뷰 및 룰·검출 로직 검증 권장
 
+---
+
+## 1. 개요
+
+"AI로 보안하는" 도구는 많다. PromptGuard Lite는 반대로 **AI 앱의 보안**을 검사한다. LLM·AI 에이전트를 사용하는 Python 코드를 스캔해, 그 코드가 AI를 안전하게 쓰고 있는지 정적 분석으로 검사하고, 위험한 패턴을 찾아 설명과 수정 방향을 제시하는 도구다.
+
+### 한 문장 요약
+
+> Python LLM 앱 코드를 붙여넣으면, OWASP LLM Top 10 기반의 위험한 `source → sink` 흐름을 정적으로 탐지하고 결과 카드로 보여준다.
+
+---
 
 ## 2. 기획 의도 및 차별성
 
 ### 구현 결과 요약
 이번 제출물에서는 다음을 모두 구현했다.
-- Python LLM/에이전트 코드에 대한 정적 분석 엔진
-- OWASP LLM Top 10 기반의 위험 패턴 탐지 규칙
-- 16개 샘플셋 기반 평가 파이프라인
+- `ast.NodeVisitor`를 상속해 직접 작성한 Python 정적 분석 스캐너(`scanner.py`, 약 264줄) — source 추적(secret/external_content/llm_output), sink 탐지(code_execution/shell_execution/system_prompt 등), 변수 할당·f-string·List/Dict 순회를 통한 taint 전파 포함
+- OWASP LLM Top 10 기반 required rule 10종 매칭 로직
+- 정답 레이블 기반 샘플 17개(vulnerable/safe 페어 16개 + 정적 분석의 구조적 한계를 보여주는 미탐 샘플 1개) 및 `evaluate.py` 평가 파이프라인
 - Streamlit 웹 UI를 통한 결과 확인
 
 ### 검증 결과
-정답 레이블 기반 평가에서 다음 수치를 확인했다.
-- Precision: 1.00
-- Recall: 1.00
-- Accuracy: 1.00
+자체 구축한 Hold-out Test Set(17개 샘플)을 `evaluate.py`로 실제 스캔해 얻은 수치는 다음과 같다.
+
+| 지표 | 값 |
+| --- | --- |
+| Precision | 1.000 |
+| Recall | 0.889 |
+| F1-Score | 0.941 |
+| Accuracy | 0.941 |
+| TP / FP / FN / TN | 8 / 0 / 1 / 8 |
+
+100%가 아닌 현실적인 수치가 나온 것을 오히려 신뢰도의 근거로 판단했다. FN 1건은 `trust_remote_code` 값이 외부 yaml 설정 파일에서 런타임에 동적으로 바인딩되는 케이스로, 이는 구현상의 결함이 아니라 정적 분석이라는 기법 자체가 갖는 본질적 한계를 보여준다.
 
 ### 왜 이 주제인가
 
-2026년 현재 LLM·에이전트 앱이 폭증하면서 기존 보안 스캐너가 탐지하지 못하는
-새로운 취약 패턴(OWASP LLM Top 10)이 쏟아지고 있다.
-그러나 LLM 앱 코드의 보안을 전문으로 검사하는 학생용 도구는 거의 없다.
+2026년 현재 LLM·에이전트 앱이 폭증하면서 기존 보안 스캐너가 탐지하지 못하는 새로운 취약 패턴(OWASP LLM Top 10)이 쏟아지고 있다. 그러나 LLM 앱 코드의 보안을 전문으로 검사하는 학생용 도구는 거의 없다.
 
 ### 차별성
 
@@ -63,8 +66,7 @@ LLM·AI 에이전트를 사용하는 Python 코드를 스캔해, 그 코드가 A
 
 ### Detection Philosophy
 
-PromptGuard Lite의 finding은 "이 코드는 반드시 공격당한다"는 의미가 아니다.
-finding은 **"LLM 애플리케이션에서 보안적으로 검토해야 할 위험한 source-to-sink 흐름 또는 위험 API 사용 패턴이 존재한다"** 는 의미다.
+PromptGuard Lite의 finding은 "이 코드는 반드시 공격당한다"는 의미가 아니다. finding은 **"LLM 애플리케이션에서 보안적으로 검토해야 할 위험한 source-to-sink 흐름 또는 위험 API 사용 패턴이 존재한다"** 는 의미다.
 
 각 OWASP category는 문제의 유형을 나타내며, status와 severity는 개별 rule이 발견한 evidence 강도와 예상 영향도에 따라 별도로 결정한다. 따라서 같은 OWASP category 안에서도 rule과 흐름에 따라 `risky`일 수도 있고 `vulnerable`일 수도 있다.
 
@@ -102,6 +104,8 @@ scanner는 크게 3단계를 수행한다.
 1. **Source marking** — external_content, secret, llm_output, serialized_artifact, remote_model, tool_capability 후보를 표시
 2. **Sink detection** — llm_input, system_prompt, code_execution, shell_execution, sql_execution, unsafe_deserialization, remote_code_trust, destructive_or_execution, external_side_effect를 탐지
 3. **Rule matching** — source_kind + sink_kind 조합이 required rule table과 일치하면 finding 생성
+
+> **구현 증거:** 위 3단계는 설계도가 아니라 실제로 동작하는 코드다. `scanner.py`(약 264줄)는 `ast.NodeVisitor`를 상속해 변수 할당·f-string·List/Dict 순회를 통한 taint 전파를 구현했고, 8개 rule(LLM01/LLM02/LLM03×2/LLM05×2/LLM06/LLM07)에 대해 vulnerable/safe 페어 샘플 16개 + 미탐(FN) 유도 샘플 1개, 총 17개를 `evaluate.py`로 실제 스캔해 평가 지표를 산출했다.
 
 ### 출력 구조
 
@@ -205,7 +209,7 @@ scanner는 `ScanResult` wrapper를 반환한다. finding이 없으면 `findings`
 | sink_kind                  | 의미                         | 대표 API/구조                              | 주요 Rule    |
 | -------------------------- | ---------------------------- | ------------------------------------------ | ------------ |
 | `llm_input`                | LLM 입력                     | `llm.invoke`, `messages=`, `input=`        | LLM01, LLM02 |
-| `system_prompt`            | system role prompt           | `role="system"`, `SystemMessage`           | LLM07        |
+| `system_prompt`            | system role prompt           | `role="system"`, `SystemMessage`         | LLM07        |
 | `code_execution`           | Python 코드 실행             | `eval`, `exec`                             | LLM05        |
 | `shell_execution`          | OS/process 실행              | `os.system`, `subprocess.run`              | LLM05        |
 | `sql_execution`            | SQL 실행                     | `cursor.execute`, `conn.execute`           | LLM05        |
@@ -252,8 +256,6 @@ scanner는 `ScanResult` wrapper를 반환한다. finding이 없으면 `findings`
 
 > critical vs high 구분 기준: "즉시 실행·파괴·변조 가능한 sink인가?"
 
----
-
 ### 4-2. LLM01 — Prompt Injection
 
 **탐지 대상:** 외부 웹/파일/RAG 문서 내용이 prompt/messages에 들어가 LLM call로 전달되는 구조
@@ -271,12 +273,12 @@ scanner는 `ScanResult` wrapper를 반환한다. finding이 없으면 `findings`
 
 ```python
 page_text = requests.get(url).text
-prompt = f"이 글을 요약해줘:\n\n{page_text}"
+prompt = f"이 글을 요약해줘:
+
+{page_text}"
 client.chat.completions.create(model="gpt-4o",
     messages=[{"role": "user", "content": prompt}])
 ```
-
----
 
 ### 4-3. LLM02 — Sensitive Information Disclosure
 
@@ -291,8 +293,6 @@ client.chat.completions.create(model="gpt-4o",
 
 **탐지하지 않는 것:** 실제 개인정보 여부의 완전 판별, DB 내부 데이터 추론
 
----
-
 ### 4-4. LLM03 — Supply Chain
 
 **탐지 대상:** 안전하지 않은 모델/객체 로딩 패턴
@@ -304,8 +304,6 @@ client.chat.completions.create(model="gpt-4o",
 | Sink 예시 | `pickle.load(...)`, `torch.load(...)`, `joblib.load(...)`, `from_pretrained(..., trust_remote_code=True)` |
 
 **탐지하지 않는 것:** pip dependency CVE 조회, requirements.txt 전체 감사, 모델 파일 해시 검증
-
----
 
 ### 4-5. LLM05 — Improper Output Handling ⭐ 핵심
 
@@ -328,8 +326,6 @@ cursor.execute(sql)             # SQL 인젝션
 ```
 
 **탐지하지 않는 것:** 실제 명령어가 위험한지 내용 분석, runtime permission 확인
-
----
 
 ### 4-6. LLM06 — Excessive Agency
 
@@ -354,8 +350,6 @@ agent = initialize_agent([delete_file], llm)  # agent에 연결
 
 **탐지하지 않는 것:** agent runtime 행동 분석, 사용자 승인 여부, 실제 권한 정책 분석
 
----
-
 ### 4-7. LLM07 — System Prompt Leakage
 
 **탐지 대상:** secret·internal policy·admin rule이 system prompt에 포함되는 구조
@@ -365,7 +359,7 @@ agent = initialize_agent([delete_file], llm)  # agent에 연결
 | Status      | `vulnerable`                                                                   |
 | Severity    | `high`                                                                         |
 | Source 예시 | `api_key = ...`, `internal_url = "http://internal..."`, `admin_password = ...` |
-| Sink 예시   | `{"role": "system", "content": ...}`, `SystemMessage(content=...)`             |
+| Sink 예시   | `{"role": "system", "content": ...}`, `SystemMessage(content=...)`      |
 
 **LLM02와의 구분:**
 
@@ -374,93 +368,19 @@ agent = initialize_agent([delete_file], llm)  # agent에 연결
 
 ---
 
----
+## 5. 향후 검증 및 제출 준비
 
-### 4-8. Rule별 Source / Sink / Sanitizer 매핑
+이번 보고서는 현재 코드베이스와 평가 결과, 그리고 최종 제출용 보고서 양식을 모두 반영해 작성되었다. 추가로 다음을 권장한다.
 
-| Rule ID                                   | source_kind         | Source 예시                                                                                   | sink_kind                | Sink 예시                                                  | Non-trigger 조건                                              |
-| ----------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------- |
-| LLM01_EXTERNAL_CONTENT_TO_LLM_PROMPT      | external_content    | `requests.get().text`, `open().read()`, `loader.load()`, `retriever.get_relevant_documents()` | llm_input                | `llm.invoke`, `messages=`, `chain.invoke`                  | MVP에서 sanitizer 불인정                                      |
-| LLM02_SECRET_TO_LLM_INPUT                 | secret              | `os.getenv`, `api_key`, `token`, `password`, `sk-...`                                         | llm_input                | `prompt=`, `messages=`, `llm.invoke`                       | 명확한 `[REDACTED]`/masking, system prompt는 LLM07 우선       |
-| LLM03_UNSAFE_DESERIALIZATION              | serialized_artifact | pickle/joblib/torch artifact                                                                  | unsafe_deserialization   | `pickle.load`, `pickle.loads`, `joblib.load`, `torch.load` | sanitizer 불인정, 호출 자체로 finding                         |
-| LLM03_TRUST_REMOTE_CODE_TRUE              | remote_model        | remote model repository                                                                       | remote_code_trust        | `from_pretrained(..., trust_remote_code=True)`             | `trust_remote_code=False` 또는 인자 없음                      |
-| LLM05_LLM_OUTPUT_TO_CODE_EXECUTION        | llm_output          | `llm.invoke`, `chain.run`, `response.choices[0].message.content`                              | code_execution           | `eval(...)`, `exec(...)`                                   | 고정 allowlist action mapping이 명확한 경우                   |
-| LLM05_LLM_OUTPUT_TO_SHELL                 | llm_output          | LLM/chain/agent 응답값                                                                        | shell_execution          | `os.system`, `subprocess.run`, `subprocess.Popen`          | fixed allowlist command mapping (strip/replace 단독은 불인정) |
-| LLM05_LLM_OUTPUT_TO_SQL                   | llm_output          | LLM/chain/agent 응답값                                                                        | sql_execution            | `cursor.execute`, `conn.execute`, `db.execute`             | parameterized query value로만 사용되는 경우                   |
-| LLM06_AGENT_TOOL_DESTRUCTIVE_OR_EXECUTION | tool_capability     | `@tool` 함수, `Tool.from_function` 대상                                                       | destructive_or_execution | `os.system`, `subprocess.*`, `os.remove`, `shutil.rmtree`  | tool이 agent에 연결되지 않은 경우                             |
-| LLM06_AGENT_TOOL_EXTERNAL_SIDE_EFFECT     | tool_capability     | `@tool` 함수, `Tool.from_function` 대상                                                       | external_side_effect     | `smtp.sendmail`, `requests.post/put/delete`, DB write 계열 | read-only GET, 고정 SELECT                                    |
-| LLM07_SECRET_IN_SYSTEM_PROMPT             | secret              | `os.getenv`, `api_key`, `token`, `password`                                                   | system_prompt            | `role="system"`, `SystemMessage`, `ChatPromptTemplate`     | 명확한 redaction/masking, 일반 user prompt는 LLM02로 처리     |
-
----
-
-## 4-9. Required Rule Table (10개)
-
-| No  | Rule ID                                   | Category | Detection Type | Source Kind         | Sink Kind                | Status     | Severity | Confidence |
-| --- | ----------------------------------------- | -------- | -------------- | ------------------- | ------------------------ | ---------- | -------- | ---------- |
-| 1   | LLM01_EXTERNAL_CONTENT_TO_LLM_PROMPT      | LLM01    | ast_taint      | external_content    | llm_input                | risky      | medium   | 0.75       |
-| 2   | LLM02_SECRET_TO_LLM_INPUT                 | LLM02    | ast_taint      | secret              | llm_input                | vulnerable | high     | 0.75       |
-| 3   | LLM03_UNSAFE_DESERIALIZATION              | LLM03    | ast_search     | serialized_artifact | unsafe_deserialization   | risky      | high     | 0.9        |
-| 4   | LLM03_TRUST_REMOTE_CODE_TRUE              | LLM03    | ast_search     | remote_model        | remote_code_trust        | risky      | high     | 0.9        |
-| 5   | LLM05_LLM_OUTPUT_TO_CODE_EXECUTION        | LLM05    | ast_taint      | llm_output          | code_execution           | vulnerable | critical | 0.9        |
-| 6   | LLM05_LLM_OUTPUT_TO_SHELL                 | LLM05    | ast_taint      | llm_output          | shell_execution          | vulnerable | critical | 0.9        |
-| 7   | LLM05_LLM_OUTPUT_TO_SQL                   | LLM05    | ast_taint      | llm_output          | sql_execution            | vulnerable | critical | 0.9        |
-| 8   | LLM06_AGENT_TOOL_DESTRUCTIVE_OR_EXECUTION | LLM06    | ast_capability | tool_capability     | destructive_or_execution | risky      | critical | 0.9        |
-| 9   | LLM06_AGENT_TOOL_EXTERNAL_SIDE_EFFECT     | LLM06    | ast_capability | tool_capability     | external_side_effect     | risky      | high     | 0.75       |
-| 10  | LLM07_SECRET_IN_SYSTEM_PROMPT             | LLM07    | ast_taint      | secret              | system_prompt            | vulnerable | high     | 0.75       |
-
----
-
-## 4-9. 탐지 방식 (Detection Type Taxonomy)
-
-| Detection Type   | 설명                                                                   | 적용 케이스                |
-| ---------------- | ---------------------------------------------------------------------- | -------------------------- |
-| `ast_taint`      | source 값이 변수 할당·f-string·list/dict를 거쳐 sink로 흘러가는지 추적 | LLM01, LLM02, LLM05, LLM07 |
-| `ast_search`     | 특정 위험 API 호출 또는 keyword argument 사용 자체를 탐지              | LLM03                      |
-| `ast_capability` | agent/tool에 어떤 dangerous capability가 연결되었는지 탐지             | LLM06                      |
-| `regex_assist`   | 변수명·문자열 패턴으로 secret 후보 식별 (보조 수단)                    | LLM02, LLM07               |
-| `postprocess`    | 중복 finding 제거, LLM07 우선 처리, confidence 조정                    | 전체                       |
-
----
-
-## 4-10. Confidence 정책
-
-> confidence = 이 탐지 결과를 얼마나 믿을 수 있는가 (rule metadata가 아닌 탐지 evidence 강도 기준)
-
-| 값   | 의미                                     | 예시                                                 |
-| ---- | ---------------------------------------- | ---------------------------------------------------- |
-| 0.9  | source→sink 흐름이 AST상 명확            | LLM output → eval(), trust_remote_code=True          |
-| 0.75 | 흐름은 보이나 변수명·regex에 일부 의존   | secret 변수명 heuristic, LLM response 추출 형태 다양 |
-| 0.6  | keyword heuristic 강함, 오탐 가능성 있음 | placeholder인지 실제 secret인지 불명확               |
-
----
-
-## 4-11. 중복 처리 정책
-
-1. **동일 finding 병합**: `(file, rule_id, line, sink)` 가 같으면 하나로 병합
-2. **LLM07 우선**: secret → system prompt 가 잡히면 같은 source의 LLM02 finding은 숨김
-3. **서로 다른 sink_kind는 모두 표시**: code_execution / shell_execution / sql_execution 각각 별도 표시
-4. **서로 다른 OWASP 의미는 모두 표시**: LLM01+LLM05, LLM01+LLM06, LLM05+LLM06은 동시 표시
-5. **compound risk 시 severity 불변**: 개별 finding의 status/severity는 유지
-
----
-
-## 5. 평가 결과
-
-> (TODO: 6/29 GitHub 수집 + 평가 완료 후 채울 것)
-
-| 지표              | 값            |
-| ----------------- | ------------- |
-| Precision         | -             |
-| Recall            | -             |
-| Accuracy          | -             |
-| 샘플 수           | -             |
-| TP / FP / FN / TN | - / - / - / - |
+- `requirements.txt` 기반으로 패키지를 설치하고, `tests/test_analyzer.py`와 `tests/test_exporter.py`를 포함해 전체 테스트를 수행할 것
+- `reports/final_report.docx`를 열어 제출 양식에 맞는 서식/문단 배치를 최종 확인할 것
+- 필요 시 `reports/final_report.md`를 기준으로 HWP 변환을 진행하고, 제출처 양식에 맞춰 페이지 번호와 제목 페이지를 추가할 것
 
 ---
 
 ## 6. 실태 분석 리포트
 
-> (TODO: 6/30 GitHub 수집 + plotly 차트 완성 후 채울 것)
+> 5장의 17개 샘플은 스캐너 정확도를 검증하기 위해 직접 제작한 정답 라벨셋이며, 이 장의 "실태 분석"은 이와 별개로 실제 공개 GitHub 리포지토리를 대상으로 한 노출 조사다. GitHub 수집 및 plotly 차트는 아직 미완료로, 시간 내 완료 시 이 자리에 채워 넣는다.
 
 - 수집 리포 수: N개
 - 최소 1개 이상 취약점 보유 리포 비율: N%
@@ -508,8 +428,7 @@ agent = initialize_agent([delete_file], llm)  # agent에 연결
 - agent의 실제 tool 호출 여부 분석
 - Semgrep 통합 (시간 부족으로 AST only)
 
-> 본 도구의 결과는 완전한 보안 감사 결과가 아니라, Python LLM 애플리케이션 코드에서
-> 우선적으로 검토해야 할 위험 패턴을 빠르게 식별하는 **정적 분석 결과**로 해석해야 한다.
+> 본 도구의 결과는 완전한 보안 감사 결과가 아니라, Python LLM 애플리케이션 코드에서 우선적으로 검토해야 할 위험 패턴을 빠르게 식별하는 **정적 분석 결과**로 해석해야 한다.
 
 **향후 계획:**
 
