@@ -18,21 +18,22 @@ from scanner.rules import DICTIONARY, RULE_TABLE
 from engine.layer_b import judge, MODELS, DEFAULT_MODEL
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-SAMPLES_DIR = os.path.join(ROOT, "samples")
+SAMPLES_DIR = os.path.join(ROOT, "samples", "dev")
 
 SAMPLE_OPTIONS = {
-    "LLM05 - Vulnerable eval": "llm05_vuln_eval.py",
-    "LLM05 - Vulnerable subprocess (shell)": "llm05_vuln_subprocess.py",
-    "LLM05 - Safe print": "llm05_safe_print.py",
-    "LLM05 - Safe allow-list": "llm05_safe_allowlist.py",
-    "LLM01 - External web content to prompt": "llm01_risky_web_prompt.py",
-    "LLM01 - File content to prompt": "llm01_risky_file_prompt.py",
-    "LLM06 - Agent with shell tool": "llm06_vuln_shell_tool.py",
-    "LLM06 - Agent with read-only tool (safe)": "llm06_safe_readonly_tool.py",
-    "LLM02/07 - Secret in system prompt": "llm02_07_vuln_system_secret.py",
-    "LLM02 - Env client only (safe)": "llm02_safe_env_client_only.py",
-    "LLM03 - pickle.load": "llm03_risky_pickle_load.py",
-    "LLM03 - trust_remote_code=True": "llm03_risky_trust_remote_code.py",
+    "LLM01 - 외부 웹 콘텐츠 → prompt": "llm01_external_to_prompt.py",
+    "LLM02 - Secret → LLM input": "llm02_secret_to_prompt.py",
+    "LLM03 - trust_remote_code=True": "llm03_trust_remote_code.py",
+    "LLM03 - pickle.load (unsafe deserialization)": "llm03_unsafe_load.py",
+    "LLM05 - LLM output → eval": "llm05_eval.py",
+    "LLM05 - LLM output → shell 실행": "llm05_shell.py",
+    "LLM05 - LLM output → SQL 실행": "llm05_sql.py",
+    "LLM06 - Agent + 파괴적 tool (os.system)": "llm06_agent_destructive_tool.py",
+    "LLM06 - Agent + 외부 side effect (webhook POST)": "llm06_agent_external_side_effect.py",
+    "LLM07 - Secret → system prompt": "llm07_secret_system_prompt.py",
+    "Safe - 기본 LLM 호출": "safe_basic_llm_call.py",
+    "Safe - env client only": "safe_env_client_only.py",
+    "Safe - read-only agent tool": "safe_readonly_tool.py",
 }
 
 SEVERITY_STYLE = {
@@ -90,13 +91,13 @@ OWASP_SCOPE = [
 ]
 
 
-def load_sample(filename: str) -> str:
+def load_sample(filename: str) -> str | None:
     path = os.path.join(SAMPLES_DIR, filename)
     try:
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except OSError:
-        return ""
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -166,11 +167,42 @@ def render_findings_summary(findings: list[Finding]) -> None:
 
 st.set_page_config(page_title="PromptGuard Lite", page_icon="🛡️", layout="wide")
 
+st.markdown(
+    """
+    <style>
+    .stTabs [data-baseweb="tab-list"] {
+        width: 100%;
+        gap: 0;
+    }
+    .stTabs [data-baseweb="tab-list"] button[data-baseweb="tab"] {
+        flex: 1 1 0;
+        justify-content: center;
+        font-size: 1.05rem;
+        font-weight: 600;
+        padding: 0.9rem 0.5rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("🛡️ PromptGuard")
 st.caption(
     "Static scanner for Python LLM apps — detects risky source → sink patterns "
     "(OWASP Top 10 for LLM Applications 2025). It does **not** execute your code."
 )
+
+TAB_INTRO = [
+    ("🔍 Scan", "코드를 붙여넣거나 샘플/업로드로 불러와 취약한 source → sink 패턴을 정적 분석합니다."),
+    ("📊 Evaluation", "라벨링된 샘플 13개 전체를 스캔해 precision·recall 등 탐지 성능을 확인합니다."),
+    ("📚 Source/Sink Dictionary", "분석기가 인식하는 source(입력 출처)·sink(위험 목적지) API 목록과 의미를 확인합니다."),
+    ("ℹ️ About / Scope", "탐지 철학, OWASP LLM Top 10 지원 범위, 전체 규칙 테이블, 미지원 항목을 확인합니다."),
+]
+banner_cols = st.columns(4)
+for col, (name, desc) in zip(banner_cols, TAB_INTRO):
+    with col.container(border=True):
+        st.markdown(f"**{name}**")
+        st.caption(desc)
 
 tab_scan, tab_eval, tab_dict, tab_about = st.tabs(
     ["🔍 Scan", "📊 Evaluation", "📚 Source/Sink Dictionary", "ℹ️ About / Scope"]
@@ -180,19 +212,33 @@ tab_scan, tab_eval, tab_dict, tab_about = st.tabs(
 # Tab 1: Scan
 # ===========================================================================
 with tab_scan:
+    sample_keys = list(SAMPLE_OPTIONS)
     if "code" not in st.session_state:
-        st.session_state.code = load_sample(SAMPLE_OPTIONS["LLM05 - Vulnerable eval"])
+        st.session_state.code = load_sample(SAMPLE_OPTIONS[sample_keys[0]]) or ""
     if "last_findings" not in st.session_state:
         st.session_state.last_findings = None
+    if "sample_choice" not in st.session_state:
+        st.session_state.sample_choice = sample_keys[0]
+    if "_loaded_sample" not in st.session_state:
+        st.session_state._loaded_sample = sample_keys[0]
 
-    left, right = st.columns([1, 2])
+    left, right = st.columns([1, 1])
 
     with left:
         st.subheader("Input")
-        choice = st.selectbox("Built-in sample", ["(keep current)"] + list(SAMPLE_OPTIONS))
-        if st.button("Load sample", use_container_width=True) and choice != "(keep current)":
-            st.session_state.code = load_sample(SAMPLE_OPTIONS[choice])
-            st.session_state.last_findings = None
+        choice = st.selectbox(
+            "내장 샘플 선택 (선택하면 코드가 자동으로 로드됩니다)",
+            sample_keys,
+            key="sample_choice",
+        )
+        if choice != st.session_state._loaded_sample:
+            loaded = load_sample(SAMPLE_OPTIONS[choice])
+            if loaded is None:
+                st.error(f"⚠️ 샘플 파일을 찾을 수 없습니다: `{SAMPLE_OPTIONS[choice]}`")
+            else:
+                st.session_state.code = loaded
+                st.session_state.last_findings = None
+            st.session_state._loaded_sample = choice
 
         uploaded = st.file_uploader("…or upload a .py file", type=["py"])
         if uploaded is not None:
@@ -312,14 +358,35 @@ with tab_eval:
 # Tab 3: Source/Sink Dictionary
 # ===========================================================================
 with tab_dict:
-    st.subheader("Source / Sink dictionary used by this prototype")
+    st.subheader("Source / Sink Dictionary")
+    st.markdown(
+        "PromptGuard는 코드에서 **source**(위험이 시작되는 지점)가 **sink**(위험이 실제로 "
+        "발동하는 지점)까지 이어지는지를 추적합니다. 아래는 분석기가 인식하는 대표적인 "
+        "source/sink API 패턴 목록입니다."
+    )
+    st.info(
+        "🔀 **Source** = 신뢰할 수 없거나 민감한 값이 코드에 처음 등장하는 지점 "
+        "(예: 외부 웹 응답, API 키, LLM 응답)\n\n"
+        "🎯 **Sink** = 그 값이 흘러 들어가면 위험해지는 지점 "
+        "(예: `eval()`, `os.system()`, LLM system prompt)\n\n"
+        "→ 같은 rule 안에서 **source의 값이 sink까지 오염 없이 도달**하면 finding이 발생합니다."
+    )
 
     if DICTIONARY:
         df = pd.DataFrame(
             DICTIONARY,
-            columns=["Type", "Name", "Description", "Related OWASP"],
+            columns=["Type", "대표 API / 패턴", "의미", "관련 OWASP"],
         )
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.markdown("**🔀 Source (위험이 시작되는 지점)**")
+        st.dataframe(
+            df[df["Type"] == "Source"].drop(columns=["Type"]),
+            use_container_width=True, hide_index=True,
+        )
+        st.markdown("**🎯 Sink (위험이 발동하는 지점)**")
+        st.dataframe(
+            df[df["Type"] == "Sink"].drop(columns=["Type"]),
+            use_container_width=True, hide_index=True,
+        )
     else:
         st.info("Dictionary will be populated once Layer A rules are finalized.")
 
@@ -327,46 +394,61 @@ with tab_dict:
 # Tab 4: About / Scope
 # ===========================================================================
 with tab_about:
-    st.subheader("About PromptGuard")
-
-    st.markdown(
-        """
-**Purpose.** 
-
-PromptGuard는 Python LLM/에이전트 애플리케이션이 *LLM을 안전하게 사용하는지* 검사합니다. 프롬프트 자체의 악의성 여부를 판단하는 것이 아니라, **코드 구조와 데이터 흐름**을 조사하여 위험한 `source → sink` 패턴을 포착합니다.
-
-**Detection Philosophy.**
-
-Finding은 "이 코드는 반드시 공격당한다"는 의미가 아닙니다.
-Finding은 "LLM 애플리케이션에서 보안적으로 검토해야 할 위험한 source-to-sink 흐름 또는 위험 API 사용 패턴이 존재한다" 는 의미입니다.
-- LLM01: prompt 내용의 악의성이 아닌, 외부 콘텐츠가 LLM prompt로 들어가는 **구조**를 탐지
-- LLM05: LLM output이 검증 없이 eval/shell/SQL sink로 전달되는 **구조**를 탐지
-- LLM06: agent가 tool을 실제로 호출했는지가 아닌, 고위험 capability가 **연결되어 있는지**를 탐지
-- LLM02/07: secret/internal info가 LLM 입력·log·system prompt에 **포함되는 구조**를 탐지
-- LLM03: 전체 supply chain audit이 아닌, **unsafe loading pattern**만 탐지
-
-**Analysis method.** 
-
-Python ast 구조 분석 + 간단한 변수 오염 추적(Taint Tracking) + 가벼운 정규식/문자열 휴리스틱 알고리즘을 사용합니다. 별도의 서드파티 스캐너는 필요하지 않습니다.
-"""
+    about_intro, about_scope, about_structure, about_policy = st.tabs(
+        ["🎯 개요", "📋 탐지 범위 (OWASP)", "🧩 내부 구조", "⚠️ 정책 & 한계"]
     )
 
-    st.divider()
-    st.subheader("Supported OWASP Cases (LLM Top 10 2025)")
+    # -- 개요 -----------------------------------------------------------
+    with about_intro:
+        st.markdown(
+            "> 이 프로토타입은 **정적 분석만** 수행하며, 입력 코드를 실행하지 않는다. 실제 공격 "
+            "성공 여부를 검증하지 않고, 코드 구조상 위험한 source→sink 패턴을 탐지한다."
+        )
 
-    scope_df = pd.DataFrame(
-        OWASP_SCOPE,
-        columns=["Case", "Name", "탐지 대상", "탐지하지 않는 것", "Status", "Severity"],
-    )
-    st.dataframe(scope_df, use_container_width=True, hide_index=True)
+        st.markdown("#### Purpose")
+        st.markdown(
+            "PromptGuard는 Python LLM/에이전트 애플리케이션이 *LLM을 안전하게 사용하는지* "
+            "검사합니다. 프롬프트 자체의 악의성 여부를 판단하는 것이 아니라, **코드 구조와 "
+            "데이터 흐름**을 조사하여 위험한 `source → sink` 패턴을 포착합니다."
+        )
 
-    st.divider()
-    st.subheader("Status / Severity")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Status** — 정적 분석 결과의 확실성")
+        st.markdown("#### Detection Philosophy")
+        st.markdown(
+            "Finding은 \"이 코드는 반드시 공격당한다\"는 의미가 **아닙니다**.\n"
+            "Finding은 \"LLM 애플리케이션에서 보안적으로 검토해야 할 위험한 source-to-sink "
+            "흐름 또는 위험 API 사용 패턴이 존재한다\"는 의미입니다."
+        )
         st.markdown("""
+| Case | 탐지 기준 |
+|---|---|
+| LLM01 | prompt 내용의 악의성이 아닌, 외부 콘텐츠가 LLM prompt로 들어가는 **구조** |
+| LLM02/07 | secret/internal info가 LLM 입력·log·system prompt에 **포함되는 구조** |
+| LLM03 | 전체 supply chain audit이 아닌, **unsafe loading pattern**만 |
+| LLM05 | LLM output이 검증 없이 eval/shell/SQL sink로 전달되는 **구조** |
+| LLM06 | agent가 tool을 실제로 호출했는지가 아닌, 고위험 capability가 **연결되어 있는지** |
+""")
+
+        st.markdown("#### Analysis Method")
+        st.markdown(
+            "Python `ast` 구조 분석 + 간단한 변수 오염 추적(Taint Tracking) + 가벼운 정규식/"
+            "문자열 휴리스틱 알고리즘을 사용합니다. 별도의 서드파티 스캐너는 필요하지 않습니다."
+        )
+
+    # -- 탐지 범위 --------------------------------------------------------
+    with about_scope:
+        st.markdown("#### Supported OWASP Cases (LLM Top 10 2025)")
+        scope_df = pd.DataFrame(
+            OWASP_SCOPE,
+            columns=["Case", "Name", "탐지 대상", "탐지하지 않는 것", "Status", "Severity"],
+        )
+        st.dataframe(scope_df, use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.markdown("#### Status / Severity 범례")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Status** — 정적 분석 결과의 확실성")
+            st.markdown("""
 | Status | 의미 |
 |---|---|
 | ❌ vulnerable | 취약한 코드 흐름이 정적으로 확인됨 |
@@ -374,9 +456,9 @@ Python ast 구조 분석 + 간단한 변수 오염 추적(Taint Tracking) + 가�
 | ✅ safe | 위험 흐름이 확인되지 않음 (finding 미출력) |
 """)
 
-    with col2:
-        st.markdown("**Severity** — 실제 악용 시 영향도")
-        st.markdown("""
+        with col2:
+            st.markdown("**Severity** — 실제 악용 시 영향도")
+            st.markdown("""
 | Severity | 의미 |
 |---|---|
 | 🟥 critical | 즉각적 명령 실행·파괴·치명적 DB 조작 |
@@ -385,80 +467,75 @@ Python ast 구조 분석 + 간단한 변수 오염 추적(Taint Tracking) + 가�
 | 🟦 low | 직접 피해 제한적, 설계 개선 필요 |
 """)
 
-    st.divider()
-    st.subheader("Source / Sink Family")
+    # -- 내부 구조 --------------------------------------------------------
+    with about_structure:
+        st.markdown("#### Source / Sink Family")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Source Family (6종)**")
+            source_df = pd.DataFrame([
+                ("external_content", "웹, 파일, PDF, RAG, vector search 결과", "LLM01"),
+                ("secret",           "API key, token, password, DB URL",        "LLM02, LLM07"),
+                ("llm_output",       "LLM/chain/agent 응답값",                  "LLM05"),
+                ("serialized_artifact", "pickle/joblib/torch 로딩 대상",         "LLM03"),
+                ("remote_model",     "remote model repository",                  "LLM03"),
+                ("tool_capability",  "agent tool의 위험 기능",                   "LLM06"),
+            ], columns=["source_kind", "의미", "주요 Rule"])
+            st.dataframe(source_df, use_container_width=True, hide_index=True)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Source Family (6종)**")
-        source_df = pd.DataFrame([
-            ("external_content", "웹, 파일, PDF, RAG, vector search 결과", "LLM01"),
-            ("secret",           "API key, token, password, DB URL",        "LLM02, LLM07"),
-            ("llm_output",       "LLM/chain/agent 응답값",                  "LLM05"),
-            ("serialized_artifact", "pickle/joblib/torch 로딩 대상",         "LLM03"),
-            ("remote_model",     "remote model repository",                  "LLM03"),
-            ("tool_capability",  "agent tool의 위험 기능",                   "LLM06"),
-        ], columns=["source_kind", "의미", "주요 Rule"])
-        st.dataframe(source_df, use_container_width=True, hide_index=True)
+        with col2:
+            st.markdown("**Sink Family (9종)**")
+            sink_df = pd.DataFrame([
+                ("llm_input",              "LLM 입력",              "llm.invoke, messages=",           "LLM01, LLM02"),
+                ("system_prompt",          "system role prompt",    'role="system", SystemMessage',    "LLM07"),
+                ("code_execution",         "Python 코드 실행",       "eval, exec",                      "LLM05"),
+                ("shell_execution",        "OS/process 실행",       "os.system, subprocess.run",       "LLM05"),
+                ("sql_execution",          "SQL 실행",              "cursor.execute, conn.execute",    "LLM05"),
+                ("unsafe_deserialization", "위험한 역직렬화",         "pickle.load, torch.load",         "LLM03"),
+                ("remote_code_trust",      "remote code 신뢰",      "trust_remote_code=True",          "LLM03"),
+                ("destructive_or_execution","agent 실행/파괴",       "shell, file delete",              "LLM06"),
+                ("external_side_effect",   "agent 외부 side effect","DB write, email, POST",           "LLM06"),
+            ], columns=["sink_kind", "의미", "대표 API", "주요 Rule"])
+            st.dataframe(sink_df, use_container_width=True, hide_index=True)
 
-    with col2:
-        st.markdown("**Sink Family (9종)**")
-        sink_df = pd.DataFrame([
-            ("llm_input",              "LLM 입력",              "llm.invoke, messages=",           "LLM01, LLM02"),
-            ("system_prompt",          "system role prompt",    'role="system", SystemMessage',    "LLM07"),
-            ("code_execution",         "Python 코드 실행",       "eval, exec",                      "LLM05"),
-            ("shell_execution",        "OS/process 실행",       "os.system, subprocess.run",       "LLM05"),
-            ("sql_execution",          "SQL 실행",              "cursor.execute, conn.execute",    "LLM05"),
-            ("unsafe_deserialization", "위험한 역직렬화",         "pickle.load, torch.load",         "LLM03"),
-            ("remote_code_trust",      "remote code 신뢰",      "trust_remote_code=True",          "LLM03"),
-            ("destructive_or_execution","agent 실행/파괴",       "shell, file delete",              "LLM06"),
-            ("external_side_effect",   "agent 외부 side effect","DB write, email, POST",           "LLM06"),
-        ], columns=["sink_kind", "의미", "대표 API", "주요 Rule"])
-        st.dataframe(sink_df, use_container_width=True, hide_index=True)
+        st.divider()
+        st.markdown("#### Required Rule Table (10개)")
+        st.caption("MVP에서 반드시 구현하는 10개 rule. detection_type ∈ {ast_taint, ast_search, ast_capability}")
+        rule_df = pd.DataFrame(RULE_TABLE).rename(columns={
+            "no":             "No",
+            "rule_id":        "Rule ID",
+            "category":       "Category",
+            "detection_type": "Detection Type",
+            "source_kind":    "Source Kind",
+            "sink_kind":      "Sink Kind",
+            "status":         "Status",
+            "severity":       "Severity",
+            "confidence":     "Default Confidence",
+        })
+        st.dataframe(rule_df, use_container_width=True, hide_index=True)
 
-    st.divider()
-    st.subheader("Required Rule Table (10개)")
-    st.caption("MVP에서 반드시 구현하는 10개 rule. detection_type ∈ {ast_taint, ast_search, ast_capability}")
-
-    rule_df = pd.DataFrame(RULE_TABLE).rename(columns={
-        "no":             "No",
-        "rule_id":        "Rule ID",
-        "category":       "Category",
-        "detection_type": "Detection Type",
-        "source_kind":    "Source Kind",
-        "sink_kind":      "Sink Kind",
-        "status":         "Status",
-        "severity":       "Severity",
-        "confidence":     "Default Confidence",
-    })
-    st.dataframe(rule_df, use_container_width=True, hide_index=True)
-
-    st.divider()
-    st.subheader("중복 처리 정책")
-    st.markdown("""
+    # -- 정책 & 한계 ------------------------------------------------------
+    with about_policy:
+        st.markdown("#### 중복 처리 정책")
+        st.markdown("""
 - **동일 finding 병합**: `(file, rule_id, line, sink)` 가 같으면 하나로 병합
 - **LLM07 우선**: secret → system prompt가 잡히면 같은 source의 LLM02는 숨김
 - **서로 다른 sink_kind는 모두 표시**: code_execution / shell_execution / sql_execution 각각 표시
 - **서로 다른 OWASP 의미는 모두 표시**: LLM01+LLM05, LLM01+LLM06, LLM05+LLM06 등
 """)
 
-    st.divider()
-    st.warning(
-        "**MVP 제외 범위 (현재 미지원)**\n\n"
-        "1. 입력 코드를 실행하지 않음 (정적 분석만)\n"
-        "2. 실제 exploit 가능 여부 미검증\n"
-        "3. 단일 파일 분석만 지원 (inter-file taint 미지원)\n"
-        "4. complex inter-procedural analysis 미지원\n"
-        "5. JS/TS 미지원 (Python only)\n"
-        "6. package CVE audit 미지원\n"
-        "7. 모델 파일 hash 검증 미지원\n"
-        "8. advanced sanitizer verification 미지원\n"
-        "9. runtime permission analysis 미지원\n"
-        "10. agent의 실제 tool 호출 여부 미분석\n"
-        "11. risky 결과는 사람의 추가 검토 필요"
-    )
-
-    st.markdown(
-        "> 이 프로토타입은 정적 분석만 수행하며, 입력 코드를 실행하지 않는다. 실제 공격 성공 "
-        "여부를 검증하지 않고, 코드 구조상 위험한 source→sink 패턴을 탐지한다."
-    )
+        st.divider()
+        st.warning(
+            "**MVP 제외 범위 (현재 미지원)**\n\n"
+            "1. 입력 코드를 실행하지 않음 (정적 분석만)\n"
+            "2. 실제 exploit 가능 여부 미검증\n"
+            "3. 단일 파일 분석만 지원 (inter-file taint 미지원)\n"
+            "4. complex inter-procedural analysis 미지원\n"
+            "5. JS/TS 미지원 (Python only)\n"
+            "6. package CVE audit 미지원\n"
+            "7. 모델 파일 hash 검증 미지원\n"
+            "8. advanced sanitizer verification 미지원\n"
+            "9. runtime permission analysis 미지원\n"
+            "10. agent의 실제 tool 호출 여부 미분석\n"
+            "11. risky 결과는 사람의 추가 검토 필요"
+        )

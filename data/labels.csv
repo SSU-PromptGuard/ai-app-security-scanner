@@ -1,0 +1,14 @@
+sample_id,file,label,category
+llm01_external_to_prompt,samples/dev/llm01_external_to_prompt.py,risky,LLM01
+llm02_secret_to_prompt,samples/dev/llm02_secret_to_prompt.py,vulnerable,LLM02
+llm03_trust_remote_code,samples/dev/llm03_trust_remote_code.py,risky,LLM03
+llm03_unsafe_load,samples/dev/llm03_unsafe_load.py,risky,LLM03
+llm05_eval,samples/dev/llm05_eval.py,vulnerable,LLM05
+llm05_shell,samples/dev/llm05_shell.py,vulnerable,LLM05
+llm05_sql,samples/dev/llm05_sql.py,vulnerable,LLM05
+llm06_agent_destructive_tool,samples/dev/llm06_agent_destructive_tool.py,risky,LLM06
+llm06_agent_external_side_effect,samples/dev/llm06_agent_external_side_effect.py,risky,LLM06
+llm07_secret_system_prompt,samples/dev/llm07_secret_system_prompt.py,vulnerable,LLM07
+safe_basic_llm_call,samples/dev/safe_basic_llm_call.py,safe,-
+safe_env_client_only,samples/dev/safe_env_client_only.py,safe,-
+safe_readonly_tool,samples/dev/safe_readonly_tool.py,safe,-
