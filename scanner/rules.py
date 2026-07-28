@@ -167,7 +167,7 @@ SECRET_LITERAL_HINTS = (
     "-----BEGIN PRIVATE KEY-----",
 )
 
-MASKING_HINTS = ("[REDACTED]", "<REDACTED>", "REDACTED", "***", "****", "xxxxx")
+MASKING_LITERALS = {"[REDACTED]", "<REDACTED>", "REDACTED"}
 
 EXTERNAL_NAME_HINTS = (
     "page_text",
@@ -181,14 +181,91 @@ EXTERNAL_NAME_HINTS = (
 
 REQUESTS_CONTENT_METHODS = {"requests.get", "requests.post"}
 EXTERNAL_LOADERS = {"PyPDFLoader", "WebBaseLoader"}
-EXTERNAL_RETRIEVAL_SUFFIXES = {"get_relevant_documents", "similarity_search"}
+LOADER_CONSTRUCTORS = EXTERNAL_LOADERS | {
+    "SimpleDirectoryReader",
+    "DirectoryReader",
+    "PDFReader",
+}
+LOADER_METHODS = {"load", "lazy_load", "load_data"}
+RETRIEVER_METHODS = {
+    "invoke",
+    "ainvoke",
+    "get_relevant_documents",
+    "aget_relevant_documents",
+}
+VECTOR_STORE_METHODS = {
+    "similarity_search",
+    "similarity_search_with_score",
+    "max_marginal_relevance_search",
+}
+EXTERNAL_RETRIEVAL_SUFFIXES = (
+    RETRIEVER_METHODS - {"invoke", "ainvoke"}
+) | VECTOR_STORE_METHODS
 
 LLM_CALL_ROOTS = {"llm", "chain", "agent"}
+KNOWN_LLM_RECEIVER_METHODS = {
+    ("llm", "invoke"),
+    ("chain", "invoke"),
+    ("chain", "run"),
+    ("agent", "run"),
+}
 LLM_OUTPUT_ATTR_SUFFIXES = ("output_text", "choices.message.content")
-LLM_OUTPUT_CALL_ENDINGS = (
-    "client.responses.create",
-    "client.chat.completions.create",
+OPENAI_SDK_CALL_SEGMENTS = (
+    ("client", "responses", "create"),
+    ("client", "chat", "completions", "create"),
 )
+MODEL_CALL_METHODS = {
+    "invoke",
+    "ainvoke",
+    "stream",
+    "astream",
+    "batch",
+    "abatch",
+    "run",
+    "arun",
+}
+AGENT_CALL_METHODS = {"invoke", "ainvoke", "stream", "astream", "run", "arun"}
+QUERY_ENGINE_METHODS = {"query", "aquery"}
+
+MODEL_CONSTRUCTORS = {
+    "OpenAI",
+    "ChatOpenAI",
+    "AzureChatOpenAI",
+    "ChatAnthropic",
+    "ChatGoogleGenerativeAI",
+}
+CLIENT_CONSTRUCTORS = {"OpenAI", "AsyncOpenAI"}
+AGENT_FACTORIES = {
+    "create_agent",
+    "initialize_agent",
+    "AgentExecutor",
+    "create_react_agent",
+    "create_openai_functions_agent",
+}
+CHAIN_FACTORIES = {
+    "create_retrieval_chain",
+    "create_stuff_documents_chain",
+    "RunnableSequence",
+}
+ROLE_NAME_FALLBACKS = {
+    "llm": "llm_model",
+    "model": "llm_model",
+    "chain": "llm_chain",
+    "rag_chain": "llm_chain",
+    "agent": "agent",
+    "client": "openai_client",
+    "retriever": "retriever",
+    "query_engine": "query_engine",
+    "vector_store": "vector_store",
+    "loader": "loader",
+    "reader": "loader",
+    "cursor": "sql_connection",
+    "conn": "sql_connection",
+    "connection": "sql_connection",
+    "db": "sql_connection",
+    "session": "sql_connection",
+    "engine": "sql_connection",
+}
 
 # Sink families.
 UNSAFE_DESERIALIZATION_CALLS = {
@@ -201,22 +278,31 @@ UNSAFE_DESERIALIZATION_CALLS = {
 CODE_EXEC_CALLS = {"eval", "exec"}
 SHELL_EXEC_CALLS = {
     "os.system",
+    "os.popen",
     "subprocess.run",
     "subprocess.Popen",
     "subprocess.call",
     "subprocess.check_call",
     "subprocess.check_output",
+    "asyncio.create_subprocess_shell",
+    "asyncio.create_subprocess_exec",
 }
-SQL_EXEC_SUFFIXES = {"execute"}
+SQL_EXEC_SUFFIXES = {"execute", "executemany", "exec_driver_sql"}
 SQL_EXEC_ROOTS = {"cursor", "conn", "connection", "db", "session", "engine"}
 
 LLM_INPUT_KEYWORDS = {"messages", "input", "prompt", "content", "text"}
+PRIVILEGED_PROMPT_KEYWORDS = {"instructions", "system_prompt"}
 SYSTEM_PROMPT_NAMES = {"system_prompt", "system_message", "system_instructions"}
 
 # Agent/tool capability patterns.
-TOOL_FACTORY_SUFFIXES = {"Tool.from_function", "StructuredTool.from_function"}
-TOOL_CONSTRUCTOR_NAMES = {"Tool", "StructuredTool"}
+TOOL_FACTORY_SUFFIXES = {
+    "Tool.from_function",
+    "StructuredTool.from_function",
+    "FunctionTool.from_defaults",
+}
+TOOL_CONSTRUCTOR_NAMES = {"Tool", "StructuredTool", "FunctionTool"}
 AGENT_BINDING_CALLS = {
+    "create_agent",
     "initialize_agent",
     "AgentExecutor",
     "create_react_agent",
