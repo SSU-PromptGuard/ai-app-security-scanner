@@ -153,6 +153,71 @@ messages = [
         print(f"[FAIL] expected two distinct LLM07 findings, found {llm07_count}")
         ok = False
 
+    fake_mask = """
+import os
+def mask_badly(value):
+    return value
+token = os.getenv("ADMIN_TOKEN")
+masked = mask_badly(token)
+llm.invoke(masked)
+"""
+    result = scan_code(fake_mask, filename="fake_mask.py")
+    if rule_ids(result) == {"LLM02_SECRET_TO_LLM_INPUT"}:
+        print("[PASS] unknown fake mask call preserves secret taint")
+    else:
+        print(f"[FAIL] fake mask expected LLM02, found {sorted(rule_ids(result))}")
+        ok = False
+
+    unrelated_invoke = """
+import requests
+external = requests.get("https://example.com").text
+workflow.invoke(external)
+"""
+    result = scan_code(unrelated_invoke, filename="workflow.py")
+    if not result.findings:
+        print("[PASS] unrelated workflow.invoke is not an LLM sink")
+    else:
+        print(f"[FAIL] workflow.invoke produced {sorted(rule_ids(result))}")
+        ok = False
+
+    known_invoke = """
+import requests
+external = requests.get("https://example.com").text
+llm.invoke(external)
+"""
+    result = scan_code(known_invoke, filename="known_llm.py")
+    if rule_ids(result) == {"LLM01_EXTERNAL_CONTENT_TO_LLM_PROMPT"}:
+        print("[PASS] known llm.invoke remains an LLM sink")
+    else:
+        print(f"[FAIL] llm.invoke expected LLM01, found {sorted(rule_ids(result))}")
+        ok = False
+
+    nested_known_invoke = """
+import requests
+external = requests.get("https://example.com").text
+self.llm.invoke(external)
+"""
+    result = scan_code(nested_known_invoke, filename="nested_known_llm.py")
+    if rule_ids(result) == {"LLM01_EXTERNAL_CONTENT_TO_LLM_PROMPT"}:
+        print("[PASS] nested self.llm.invoke is an LLM sink")
+    else:
+        print(f"[FAIL] self.llm.invoke expected LLM01, found {sorted(rule_ids(result))}")
+        ok = False
+
+    partial_regex_mask = """
+import os
+import re
+token = os.getenv("ADMIN_TOKEN")
+masked = re.sub(r".", "*", token, count=1)
+llm.invoke(masked)
+"""
+    result = scan_code(partial_regex_mask, filename="partial_regex_mask.py")
+    if rule_ids(result) == {"LLM02_SECRET_TO_LLM_INPUT"}:
+        print("[PASS] re.sub does not remove secret taint")
+    else:
+        print(f"[FAIL] re.sub expected LLM02, found {sorted(rule_ids(result))}")
+        ok = False
+
     missing_smoke = REQUIRED_RULE_IDS - seen_required
     if missing_smoke:
         print("[FAIL] required rules without smoke coverage:", sorted(missing_smoke))

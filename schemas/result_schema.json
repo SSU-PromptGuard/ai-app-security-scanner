@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://promptguard-lite.local/schemas/result_schema.json",
+  "title": "PromptGuard Lite Layer A ScanResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "target",
+    "ok",
+    "parse_error",
+    "findings",
+    "summary"
+  ],
+  "properties": {
+    "target": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "parse_error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "rule_id",
+        "category",
+        "status",
+        "severity",
+        "file",
+        "line",
+        "source_kind",
+        "source",
+        "sink_kind",
+        "sink",
+        "flow",
+        "evidence",
+        "confidence"
+      ],
+      "properties": {
+        "finding_id": {
+          "type": "string"
+        },
+        "rule_id": {
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "LLM01:2025 Prompt Injection",
+            "LLM02:2025 Sensitive Information Disclosure",
+            "LLM03:2025 Supply Chain",
+            "LLM05:2025 Improper Output Handling",
+            "LLM06:2025 Excessive Agency",
+            "LLM07:2025 System Prompt Leakage"
+          ]
+        },
+        "status": {
+          "enum": [
+            "vulnerable",
+            "risky"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_kind": {
+          "enum": [
+            "external_content",
+            "secret",
+            "serialized_artifact",
+            "remote_model",
+            "llm_output",
+            "tool_capability"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "sink_kind": {
+          "enum": [
+            "llm_input",
+            "unsafe_deserialization",
+            "remote_code_trust",
+            "code_execution",
+            "shell_execution",
+            "sql_execution",
+            "destructive_or_execution",
+            "external_side_effect",
+            "system_prompt"
+          ]
+        },
+        "sink": {
+          "type": "string"
+        },
+        "flow": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_findings",
+        "by_severity",
+        "by_status",
+        "by_category"
+      ],
+      "properties": {
+        "total_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "critical",
+            "high",
+            "medium",
+            "low"
+          ],
+          "properties": {
+            "critical": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "high": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "medium": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "low": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "by_status": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "vulnerable",
+            "risky"
+          ],
+          "properties": {
+            "vulnerable": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "risky": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "by_category": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}
