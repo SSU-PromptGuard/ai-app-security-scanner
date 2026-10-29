@@ -7,14 +7,14 @@ LLM·AI 에이전트를 사용하는 Python 코드에서 **보안 검토가 필�
 
 ## Overview
 
-LLM의 출력이 그대로 명령 실행에 사용되거나, 비밀정보가 프롬프트에 포함되거나, 에이전트에 파괴적인 도구가 연결되는 상황을 코드 수준에서 검토하기 위해 개발했습니다.
+LLM의 출력이 그대로 명령 실행에 사용되거나, 비밀정보가 프롬프트에 포함되거나, 에이전트에 연결된 도구가 잘못된 행동으로 이어질 수 있는 상황을 코드 수준에서 검토하기 위해 개발했습니다.
 
 - **Layer A — 정적 탐지:** Python AST를 이용한 위험 API 검색, 제한적인 taint analysis, 에이전트 도구 capability 분석.
 - **Layer B — 선택적 AI 설명:** Layer A의 결과를 받아 사용자 수준에 맞는 위험 설명과 수정 방향 생성.
 - **Streamlit UI:** 코드 붙여넣기, 단일 `.py` 업로드, 내장 샘플 선택 및 탐지 결과 카드 제공.
 - **구조화된 분석 결과:** 규칙, 코드 위치, source–sink 흐름, 근거, 심각도 및 confidence를 Python API에서 조회·JSON 직렬화.
 
-> Finding은 실제 공격 성공을 입증한 결과가 아닙니다. 특히 외부 문서가 프롬프트에 포함되는 것만으로 악성 prompt injection이 발생했다고 단정하지 않습니다. 이 도구는 우선 검토할 구조적 위험을 표시합니다.
+> Finding은 실제 공격 성공을 입증한 결과가 아니며, 이 도구는 우선 검토할 구조적 위험을 표시합니다.
 
 ## Architecture
 
@@ -29,26 +29,41 @@ flowchart TD
 
 Layer A는 변수 할당, 문자열 조합, 일부 컨테이너·반복문 등을 통한 값의 전파를 추적합니다. 직접 import alias와 제한적인 객체 역할 추론을 활용하고, 알려진 LLM 호출과 위험 sink를 연결합니다. 에이전트 규칙은 도구 내부의 위험 기능과 에이전트에 대한 연결 여부를 함께 확인합니다.
 
-Layer B는 **탐지 규칙이나 심각도를 다시 결정하는 분석 엔진이 아니라**, 기존 finding에 `reason`과 `fix`를 덧붙이는 설명 계층입니다. 입문자·개발자·전문가 수준을 선택할 수 있으며, AI 설명을 끄면 정적 탐지만 수행합니다.
+Layer B는 **탐지 규칙이나 severity를 다시 결정하는 분석 엔진이 아니라**, 기존 finding에 `reason`과 `fix`를 덧붙이는 설명 계층입니다. 입문자·개발자·전문가 수준을 선택할 수 있으며, AI 설명을 끄면 정적 탐지만 수행합니다.
 
 ## Detection Scope
 
-| OWASP 2025 범주 | 탐지하는 구조 | 규칙 수 | Status / Severity |
-| --- | --- | ---: | --- |
-| LLM01 · Prompt Injection | 외부 웹·파일·검색 콘텐츠 → LLM 입력 | 1 | risky / medium |
-| LLM02 · Sensitive Information Disclosure | 비밀정보 후보 → LLM 입력 | 1 | vulnerable / high |
-| LLM03 · Supply Chain | 위험 역직렬화 API, `trust_remote_code=True` | 2 | risky / high |
-| LLM05 · Improper Output Handling | LLM 출력 → 코드 실행·shell·SQL 실행 | 3 | vulnerable / critical |
-| LLM06 · Excessive Agency | 파괴·실행 또는 외부 부작용 기능을 가진 도구 → 에이전트 연결 | 2 | risky / critical 또는 high |
-| LLM07 · System Prompt Leakage | 비밀정보 후보 → system/developer 프롬프트 또는 관련 특권 입력 | 1 | vulnerable / high |
+OWASP LLM Top 10:2025에 근거하여 10가지 중 **정적 분석으로 탐지 가능한 위험**을 분석합니다. 탐지에는 위험 API 검색, source–sink 데이터 흐름 추적, 에이전트 도구의 capability 및 연결 구조 분석을 사용합니다.
 
-지원 패턴의 예시는 OpenAI SDK 호출, 일부 LangChain·LlamaIndex 스타일의 모델·chain·retrieval·tool 구조입니다. 프레임워크 전체 지원이나 모든 API 형태의 인식을 의미하지 않습니다. 규칙의 정확한 정의는 [scanner/rules.py](scanner/rules.py), 구현은 [scanner/analyzer.py](scanner/analyzer.py)를 참고하세요.
+| OWASP 2025 범주 | 탐지하는 구조 | 대표 지원 패턴 |
+| --- | --- | --- |
+| **LLM01 · Prompt Injection** | 외부 콘텐츠가 LLM 입력으로 전달되는 흐름 | 웹 요청 결과, 파일 읽기, 문서 loader, retriever·vector search 결과 → 인식 가능한 모델·chain·agent 호출 |
+| **LLM02 · Sensitive Information Disclosure** | 비밀정보 후보가 LLM 입력에 포함되는 흐름 | 환경변수 조회, 변수명·문자열 패턴으로 식별한 API 키·토큰·비밀번호 등 → prompt·messages·input |
+| **LLM03 · Supply Chain** | 위험 역직렬화 API 또는 외부 코드 신뢰 설정 사용 | `pickle.load/loads`, `joblib.load`, `torch.load`, `from_pretrained`·`pipeline`의 `trust_remote_code=True` |
+| **LLM05 · Improper Output Handling** | LLM 출력이 코드·명령·SQL 실행 지점으로 전달되는 흐름 | 모델·chain·agent 출력 → `eval/exec`, `os.system/popen`, subprocess·asyncio 프로세스 호출, 인식 가능한 SQL 실행 호출 |
+| **LLM06 · Excessive Agency** | 고위험 기능을 가진 도구가 에이전트에 연결된 구조 | 코드·명령 실행, 파일 삭제, HTTP 변경 요청, 이메일 전송, 식별 가능한 SQL 쓰기 작업을 포함한 도구의 에이전트 연결 |
+| **LLM07 · System Prompt Leakage** | 비밀정보 후보가 특권 프롬프트에 포함되는 구조 | system/developer 메시지, `SystemMessage`, `ChatPromptTemplate`, Responses API의 `instructions`, 알려진 agent factory의 `system_prompt` 및 관련 프롬프트 변수 |
 
-결과의 세 축은 서로 다릅니다.
+### 지원하는 코드 형태
 
-- **Status:** 규칙이 분류한 구조적 위험 상태(`risky`, `vulnerable`). 실제 악용 여부에 대한 판정은 아닙니다.
-- **Severity:** 해당 위험이 악용됐을 때의 예상 영향도.
-- **Confidence:** 탐지 근거의 명확성에 대한 휴리스틱 값(`0.9`, `0.75`, `0.6`). 통계적으로 보정된 확률이나 모델 정확도가 아닙니다.
+- **LLM 호출 인식:** OpenAI SDK의 `client.responses.create`·`client.chat.completions.create`와, 알려진 생성자·factory·객체 역할 또는 제한적인 이름 패턴으로 식별한 모델·chain·agent 호출을 지원합니다.
+- **값의 전달 추적:** 변수 할당, f-string·문자열 조합, 리스트·딕셔너리, 속성·상수 키 접근, 일부 컨테이너 변경·반복문·comprehension을 통한 전파를 추적합니다.
+- **도구 연결 분석:** `@tool`, `Tool`·`StructuredTool`·`FunctionTool`의 일부 생성 패턴과 알려진 agent 생성·연결 패턴을 분석합니다.
+- **보조 식별:** 현재 파일의 직접 import alias, 제한적인 객체 역할 추론, 변수명·문자열 기반 휴리스틱을 사용합니다.
+
+이 범위에는 **일부 LangChain·LlamaIndex 스타일의 코드 구조**가 포함되며, 프레임워크 전체나 모든 API·버전을 지원하지 않습니다. 분석은 **Python 단일 파일의 제한적인 정적 추적**을 기준으로 하며, 완전한 파일 간·함수 간 분석이나 실행 경로별 정밀 분석을 수행하지 않습니다.
+
+내부적으로는 위 범주를 **10개의 규칙 ID**로 분류합니다. 규칙 하나가 여러 API와 코드 형태를 다룰 수 있으므로, 규칙 수는 지원 패턴 수나 실제 탐지 건수를 의미하지 않습니다. 상세 정의는 [scanner/rules.py](scanner/rules.py), 판정·추적 로직은 [scanner/analyzer.py](scanner/analyzer.py)를 참고하세요.
+
+### 결과 해석
+
+- **Status:** 프로젝트가 규칙별로 지정한 구조적 위험 상태입니다. 현재 외부 콘텐츠 유입·위험 로딩·고위험 도구 연결은 `risky`, 비밀정보의 LLM 입력 전달·LLM 출력의 실행 지점 전달·특권 프롬프트 내 비밀정보는 `vulnerable`로 분류합니다. 실제 공격 성공이나 악용 가능성이 검증됐다는 뜻은 아닙니다.
+- **Severity:** 해당 위험이 악용됐을 때의 예상 영향에 따라 프로젝트가 규칙별로 지정한 등급입니다. 현재 규칙은 `medium`, `high`, `critical`을 사용하며, 실행 환경·권한을 분석해 동적으로 재산정하지 않습니다.
+- **Confidence:** 탐지 근거의 명확성을 나타내는 휴리스틱 값(`0.9`, `0.75`, `0.6`)입니다. 규칙 기본값과 source·호출 식별 근거에 따라 결정됩니다. 
+
+Status와 Severity는 **프로젝트 자체의 분류 정책**이며, OWASP가 각 탐지 결과에 부여한 공식 등급이 아닙니다.
+
+> 탐지 결과는 사람이 검토해야 할 구조적 위험을 표시합니다. 정적 분석만으로 입력 콘텐츠의 악성 여부나 실제 정보 유출·도구 실행 여부를 확인하지는 않습니다. 다만 외부 콘텐츠가 LLM 입력으로 전달되고, LLM 출력이 명령 실행이나 외부 시스템에 영향을 줄 수 있는 도구로 이어진다면 악성 입력의 영향이 확산될 가능성이 있습니다. 본 도구는 이러한 경로를 사전에 식별해, 입력 검증·출력 처리·도구 권한 등을 검토할 근거를 제공합니다.
 
 ## Quick Start
 
@@ -204,12 +219,10 @@ python -m unittest discover -s tests -p "test_layer_a_*.py" -v
 
 ## Team & Contributions
 
-3인 팀 프로젝트입니다. 공모전 보고서의 역할 분담은 다음과 같습니다.
+3인 팀 프로젝트입니다. 역할 분담은 다음과 같습니다.
 
 | 팀원 | 주요 역할 |
 | --- | --- |
-| **동균 · [@seo6347](https://github.com/seo6347)** | **Layer A 엔진·정적 분석** |
+| 동균 | 팀장, Layer A 엔진·정적 분석 |
 | 진아 | 샘플셋·라벨링·평가 |
 | 지현 | UI·통합·보고서 |
-
-동균의 담당 구현은 AST 기반 탐지 엔진, source–sink 흐름 추적, 에이전트 도구 capability 분석과 규칙·결과 계약을 중심으로 확인할 수 있습니다. 세부 변경 이력은 저장소의 commit 기록을 참고하세요.
